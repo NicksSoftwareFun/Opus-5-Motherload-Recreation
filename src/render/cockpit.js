@@ -198,11 +198,13 @@ export function createCockpit() {
   // points wherever the pilot looks — the drill and the crosshair are one thing.
   const drill = new THREE.Group();
   drill.name = 'drill';
-  // Parented to the camera, not the cabin: the boom follows the pilot's gaze, so
-  // the sight and the bit are always the same thing. Sits low enough that the
-  // housing tucks behind the sill and only the bit is visible ahead of the canopy.
-  drill.position.set(0, -0.29, -0.44);
-  camera.add(drill);
+  // NOT parented to the cabin or the camera. The boom is a real object bolted to
+  // the outside of the hull: main.js attaches this group to a world-space rig that
+  // follows the pod's position and the pilot's aim. Drawing it in the cockpit pass
+  // put it inside the cabin with the pilot, floating through the dashboard, because
+  // that pass clears the depth buffer. In the world it is depth-tested against rock
+  // like everything else, and the canopy frame correctly hides its root.
+  drill.position.set(0, -0.14, -0.50);
 
   // Two struts running out from the sill to a housing ahead of the canopy. A drill
   // aimed straight down the view axis is otherwise just a circle; the struts are
@@ -305,11 +307,6 @@ export function createCockpit() {
   headlightBounce.position.set(0, -0.2, -1);
   scene.add(headlightBounce);
 
-  // Spill from the drill's own work lamps, so the boom is lit from in front.
-  const drillLamp = new THREE.PointLight(0xffe2b0, 1.5, 1.3, 2);
-  drillLamp.position.set(0, -0.25, -0.80);
-  scene.add(drillLamp);
-
   const state = {
     drillSpin: 0,
     sway: new THREE.Vector2(),
@@ -321,7 +318,7 @@ export function createCockpit() {
     root,
     parts: { dash, overhead, consoles, racks, teletypeBay, drill, spinner, glass, canopy, shell },
     materials: mat,
-    lights: { cabinLamp, instrumentGlow, daylight, headlightBounce, drillLamp, hemi },
+    lights: { cabinLamp, instrumentGlow, daylight, headlightBounce, hemi },
 
     resize(aspect) {
       camera.aspect = aspect;
@@ -338,7 +335,6 @@ export function createCockpit() {
       daylight.intensity = 1.5 * sunlight * sunlight;
       headlightBounce.intensity = pod.lightsOn === false ? 0.05 : 0.34 * (1 - sunlight * 0.8);
       cabinLamp.intensity = (pod.power ?? 1) * 2.6;
-      drillLamp.intensity = pod.lightsOn === false ? 0 : 1.5;
       instrumentGlow.intensity = (pod.power ?? 1) * 0.30;
 
       if (pod.drilling) {
@@ -346,12 +342,12 @@ export function createCockpit() {
         spinner.rotation.z = state.drillSpin;
         // Bit chatter: the whole boom judders while it is cutting.
         drill.position.x = (Math.random() - 0.5) * 0.006;
-        drill.position.y = -0.29 + (Math.random() - 0.5) * 0.006;
+        drill.position.y = -0.14 + (Math.random() - 0.5) * 0.006;
       } else {
         state.drillSpin += dt * 1.2;
         spinner.rotation.z = state.drillSpin;
         drill.position.x *= 0.85;
-        drill.position.y += (-0.29 - drill.position.y) * 0.2;
+        drill.position.y += (-0.14 - drill.position.y) * 0.2;
       }
 
       // The cabin lags the pod a little under acceleration — suspension travel.

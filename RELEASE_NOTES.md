@@ -50,10 +50,15 @@ thing you need to be told.
 | --- | --- |
 | `W` `A` `S` `D` | Thrust |
 | `Space` | Lift |
-| `Ctrl` / `Shift` | Descend |
-| Mouse | Move your head. Past a detent, the pod turns to follow your gaze |
+| `Shift` | Descend |
+| `Q` / `E` | Turn the pod |
+| `Ctrl` | Drill straight down, wherever you happen to be looking |
+| Mouse | Move your head. Looking never steers the pod |
+| Wheel | Zoom the canopy view in and out |
 | Left click | Drill whatever the sight is on — **or** operate the switch, knob or screen region it is resting on |
 | `F9` | Recentre head tracker |
+
+The same list is on a sticky note taped to the inside of the canopy, bottom left.
 
 There are no other keybinds, because everything else is a switch you throw or a button
 on a screen. The exterior lamps, the drill clutch, the map projector and the cargo
@@ -87,10 +92,11 @@ cannot read UDP, so run the included bridge:
 npm run track
 ```
 
-Set OpenTrack's **Output** to *UDP over network*, host `127.0.0.1`, port `4242`. The
-game connects on its own. The tracker moves your head inside the cabin — including
-leaning, with real parallax against the canopy frame — while the mouse keeps steering
-the pod.
+Set OpenTrack's **Output** to *UDP over network* and port `4242`. The host may be
+`127.0.0.1` or the machine's LAN address — the bridge listens on every interface and
+prints the addresses it can be reached on when it starts. The game connects on its own.
+The tracker moves your head inside the cabin — including leaning, with real parallax
+against the canopy frame — and never turns the pod.
 
 ## Notable
 
@@ -104,11 +110,16 @@ the pod.
   a specification, is armed from under a safety cover, and shows you every ore seam and
   magma pocket within forty metres straight through solid rock. It bills you
   continuously while armed. When your credit runs out it does not stop.
+- **The drill tells you what it is chewing.** Nothing in the game is a recorded sound;
+  the rumble is synthesised live from the block under the bit. Hardness raises and
+  tightens the filter, and an ore opens a resonant ring pitched off its value — so a
+  seam announces itself in the sound of the machine before it appears on the manifest.
 - **No art assets.** Every texture, model, gauge face and CRT page in the game is
   generated in code at boot. That is why the whole thing fits in a single HTML file.
 
 ## Known limitations
 
 - Software rendering (a machine with no GPU) will run this, but slowly.
-- Audio is not implemented.
+- There is no music, and the sound is entirely synthesised — machinery, switchgear and
+  the teletype, not a score.
 - The claim is a fixed 64 × 64 × 256 m and the world seed is fixed per build.

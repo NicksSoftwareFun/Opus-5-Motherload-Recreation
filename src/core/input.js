@@ -97,6 +97,13 @@ export class Input {
     return (this.isDown(posCode) ? 1 : 0) - (this.isDown(negCode) ? 1 : 0);
   }
 
+  /** Read and clear accumulated wheel notches (positive = scrolled down). */
+  consumeWheel() {
+    const w = this.wheel;
+    this.wheel = 0;
+    return w;
+  }
+
   /** Read and clear the accumulated look delta, in radians. */
   consumeLook() {
     const dx = this.mouseDX * this.sensitivity;

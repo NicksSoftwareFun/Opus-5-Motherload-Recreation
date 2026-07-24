@@ -40,7 +40,7 @@ function wrap(line, cols) {
   return out;
 }
 
-export function createTeletype() {
+export function createTeletype({ onStrike = null } = {}) {
   const group = new THREE.Group();
 
   const bodyMat = new THREE.MeshStandardMaterial({
@@ -197,6 +197,7 @@ export function createTeletype() {
           typed++;
           dirty = true;
           clatter = 1;
+          onStrike?.();
         }
         if (typed >= current.length) {
           printed.push(current);

@@ -196,19 +196,24 @@ describe('world generation', () => {
   });
 
   it('places each ore inside its advertised depth band', () => {
-    for (const ore of ORE_TABLE) {
-      let sum = 0;
-      let n = 0;
-      for (let vy = 0; vy < world.h; vy++) {
-        for (let vz = 0; vz < world.d; vz++) {
-          for (let vx = 0; vx < world.w; vx++) {
-            if (world.get(vx, vy, vz) === ore.id) {
-              sum += vy;
-              n++;
-            }
+    // One pass over the grid accumulating every ore at once. Scanning the world
+    // separately per ore was ten million lookups and pushed the suite over its
+    // time budget for no extra confidence.
+    const sums = new Map(ORE_TABLE.map((o) => [o.id, { sum: 0, n: 0 }]));
+    for (let vy = 0; vy < world.h; vy++) {
+      for (let vz = 0; vz < world.d; vz++) {
+        for (let vx = 0; vx < world.w; vx++) {
+          const acc = sums.get(world.get(vx, vy, vz));
+          if (acc) {
+            acc.sum += vy;
+            acc.n++;
           }
         }
       }
+    }
+
+    for (const ore of ORE_TABLE) {
+      const { sum, n } = sums.get(ore.id);
       expect(n).toBeGreaterThan(0);
       // Mean depth should land near the band's stated peak.
       expect(Math.abs(sum / n - ore.peak)).toBeLessThan(ore.spread);

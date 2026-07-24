@@ -51,7 +51,7 @@ function bracketTexture() {
   return canvas;
 }
 
-export function createInteraction(camera) {
+export function createInteraction(camera, { audio = null } = {}) {
   const raycaster = new THREE.Raycaster();
   const center = new THREE.Vector2(0, 0);
 
@@ -152,6 +152,8 @@ export function createInteraction(camera) {
     activate() {
       if (!hovered) return false;
       if (hovered.kind === 'screen') {
+        // Controls make their own noise when thrown; a screen region is a keypress.
+        audio?.chirp();
         hoveredRegion?.onClick?.(hoveredRegion.id);
         return true;
       }

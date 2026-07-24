@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Loop } from './core/loop.js';
 import { Input } from './core/input.js';
 import { createHeadTracking } from './core/headTracking.js';
+import { createAudio } from './audio/audio.js';
 import { createScene } from './render/scene.js';
 import { createSurface } from './render/surface.js';
 import { createBlockAtlas, createBlockMaterials } from './render/materials.js';
@@ -26,7 +27,7 @@ import { hasSave, saveGame, loadGame, applyDiff } from './game/save.js';
 import { Narrative, ENDING_LINES } from './game/narrative.js';
 import { createMonolith, carveVault } from './render/monolith.js';
 import { AIR, BEDROCK, BLOCKS } from './world/blocks.js';
-import { WORLD, POD, PHYSICS, DEBUG } from './config.js';
+import { WORLD, POD, PHYSICS, RENDER, DEBUG } from './config.js';
 
 /**
  * Entry point: builds the world, the pod and the cabin, and runs the loop.
@@ -44,6 +45,11 @@ const seed = 1337;
 const view = createScene();
 const input = new Input(view.renderer.domElement);
 const tracker = createHeadTracking();
+
+// Browsers refuse to start audio outside a user gesture, and the game already needs
+// one to capture the mouse, so the same click does both.
+const audio = createAudio();
+view.renderer.domElement.addEventListener('mousedown', () => audio.start(), { passive: true });
 
 const surface = createSurface(seed);
 view.scene.add(surface.group);
@@ -72,7 +78,7 @@ const podExterior = createPodExterior();
 view.scene.add(podExterior.group);
 
 const cockpit = createCockpit();
-const interaction = createInteraction(cockpit.camera);
+const interaction = createInteraction(cockpit.camera, { audio });
 const syncAspect = () => cockpit.resize(window.innerWidth / window.innerHeight);
 syncAspect();
 window.addEventListener('resize', syncAspect);
@@ -103,6 +109,10 @@ boomLamp.position.set(0, 0, 0);
 boomLamp.target.position.set(0, 0, -6);
 aimRig.add(boomLamp);
 aimRig.add(boomLamp.target);
+
+// The drill boom is built by the cockpit module but lives out here, on the aim rig,
+// so it is a real object in the mine rather than a prop inside the cabin.
+aimRig.add(cockpit.parts.drill);
 
 // --- Game objects ---------------------------------------------------------
 const pod = new Pod();
@@ -177,10 +187,11 @@ const actions = {
   },
   buySensor: (key) => {
     const module = SENSOR_BY_KEY[key];
-    if (!module || pod.sensors.has(key)) return session.post('ALREADY FITTED');
-    if (!sensorAvailable(key, pod.sensors)) return session.post('PRIOR MODULE REQUIRED');
-    if (!pod.spend(module.cost)) return session.post('INSUFFICIENT CREDIT');
+    if (!module || pod.sensors.has(key)) { audio.deny(); return session.post('ALREADY FITTED'); }
+    if (!sensorAvailable(key, pod.sensors)) { audio.deny(); return session.post('PRIOR MODULE REQUIRED'); }
+    if (!pod.spend(module.cost)) { audio.deny(); return session.post('INSUFFICIENT CREDIT'); }
     pod.sensors.add(key);
+    audio.confirm();
     return session.post(`FITTED: ${module.short}`);
   },
   jettison: () => {
@@ -202,21 +213,24 @@ const actions = {
 
   buyFuel: (litres) => {
     const cost = Math.ceil(litres * SERVICE.FUEL_PER_LITRE);
-    if (!pod.spend(cost)) return session.post('INSUFFICIENT CREDIT');
+    if (!pod.spend(cost)) { audio.deny(); return session.post('INSUFFICIENT CREDIT'); }
     const added = pod.refuel(litres);
+    audio.confirm();
     return session.post(`+${added.toFixed(0)}L — ${credits(cost)} CR`);
   },
   repairHull: (points) => {
     const cost = Math.ceil(points * SERVICE.REPAIR_PER_POINT);
-    if (!pod.spend(cost)) return session.post('INSUFFICIENT CREDIT');
+    if (!pod.spend(cost)) { audio.deny(); return session.post('INSUFFICIENT CREDIT'); }
     const done = pod.repair(points);
+    audio.confirm();
     return session.post(`+${done.toFixed(0)} PLATING — ${credits(cost)} CR`);
   },
   refitModules: () => {
     const cost = Math.ceil(pod.subsystems.damageUnits() * SERVICE.REFIT_PER_UNIT);
-    if (cost < 1) return session.post('ALL MODULES SOUND');
-    if (!pod.spend(cost)) return session.post('INSUFFICIENT CREDIT');
+    if (cost < 1) { audio.deny(); return session.post('ALL MODULES SOUND'); }
+    if (!pod.spend(cost)) { audio.deny(); return session.post('INSUFFICIENT CREDIT'); }
     pod.subsystems.repairAll(1);
+    audio.confirm();
     return session.post(`MODULES REFITTED — ${credits(cost)} CR`);
   },
   acknowledgeRescue: () => {
@@ -237,14 +251,16 @@ const actions = {
   sellAll: () => {
     const units = pod.cargoUnits;
     const total = pod.sellCargo();
+    if (total > 0) audio.confirm(); else audio.deny();
     session.post(total > 0 ? `${units}U ASSAYED — ${credits(total)} CR` : 'BAY EMPTY');
   },
   buyUpgrade: (key) => {
     const level = pod.upgradeLevel(key);
     const next = upgradeTier(key, level + 1);
-    if (!next || level >= 5) return session.post('ALREADY AT MAXIMUM SPEC');
-    if (!pod.spend(next.cost)) return session.post('INSUFFICIENT CREDIT');
+    if (!next || level >= 5) { audio.deny(); return session.post('ALREADY AT MAXIMUM SPEC'); }
+    if (!pod.spend(next.cost)) { audio.deny(); return session.post('INSUFFICIENT CREDIT'); }
     pod.applyUpgrade(key);
+    audio.confirm();
     return session.post(`FITTED: ${next.name.toUpperCase()}`);
   },
   saveGame: () => {
@@ -257,6 +273,7 @@ const actions = {
       narrative: narrative.toJSON(),
     });
     saveAvailable = result.ok;
+    if (result.ok) audio.confirm(); else audio.deny();
     session.post(
       result.ok
         ? `TRANSMITTED — ${result.blocks} EDITS, ${(result.bytes / 1024).toFixed(1)} KB`
@@ -265,7 +282,7 @@ const actions = {
   },
 };
 
-const dashboard = createDashboard({ cockpit, pod, session, interaction, actions, world });
+const dashboard = createDashboard({ cockpit, pod, session, interaction, actions, world, audio });
 // Returns hang in world space, drawn straight through the rock. See providence.js.
 view.scene.add(dashboard.providence.overlay);
 
@@ -278,10 +295,21 @@ let shake = 0;
 
 const HEAD_YAW_LIMIT = 1.95;
 const HEAD_PITCH_LIMIT = 1.15;
-const FOLLOW_DEADZONE = 0.45;
-/** Wider detent when idle, so a turned head only unwinds if you look right round. */
-const FOLLOW_IDLE_DEADZONE = 1.45;
-const FOLLOW_RATE = 5.0;
+/** Radians per second on Q/E. About a second and a half for a half turn. */
+const TURN_RATE = 2.1;
+
+/**
+ * Optical zoom on the scroll wheel.
+ *
+ * Applied to the world camera *and* the cabin camera together — they render the
+ * same view in two passes, so a mismatch would slide the canopy frame away from
+ * the hole it is supposed to be framing. Clamped well short of a sniper scope: it
+ * is for reading a distant sign or lining up a seam, not for zooming to the moon.
+ */
+const ZOOM_NEAR = 34;
+const ZOOM_FAR = RENDER.FOV;
+let zoomTarget = RENDER.FOV;
+let zoomFov = RENDER.FOV;
 
 const forward = new THREE.Vector3();
 const right = new THREE.Vector3();
@@ -292,25 +320,41 @@ const aimDir = new THREE.Vector3();
 chunks.prime(body.position);
 
 function update(dt, elapsed) {
+  // Frame-wide state first. Anything read further down — the look model, the drill,
+  // the hazard checks, the instruments — wants these, and declaring them late has
+  // now bitten twice with temporal-dead-zone errors.
+  const live = session.systemsLive;
+
+  // --- Zoom ---
+  const notches = input.consumeWheel();
+  if (notches !== 0) {
+    zoomTarget = THREE.MathUtils.clamp(zoomTarget + notches * 6, ZOOM_NEAR, ZOOM_FAR);
+  }
+  zoomFov += (zoomTarget - zoomFov) * Math.min(1, dt * 12);
+  if (Math.abs(view.camera.fov - zoomFov) > 0.01) {
+    view.camera.fov = zoomFov;
+    view.camera.updateProjectionMatrix();
+    cockpit.camera.fov = zoomFov;
+    cockpit.camera.updateProjectionMatrix();
+  }
+  // Zooming in narrows the head, so mouse movement has to slow to match or aiming
+  // through the zoom is unusable.
+  input.sensitivity = 0.0022 * (zoomFov / RENDER.FOV);
+
   // --- Look ---
   const look = input.consumeLook();
   headYaw = THREE.MathUtils.clamp(headYaw - look.dx, -HEAD_YAW_LIMIT, HEAD_YAW_LIMIT);
   headPitch = THREE.MathUtils.clamp(headPitch - look.dy, -HEAD_PITCH_LIMIT, HEAD_PITCH_LIMIT);
 
-  // Past the detent, the pod turns to bring your gaze back to centre — but only
-  // while you are actually flying it. Standing still, your head stays where you put
-  // it, which is what makes the side consoles usable: park, look right, work the
-  // feed knob, look back. With the follow always on, every panel you turned to read
-  // would slide back to the middle of the canopy before you could click anything.
-  const steering = input.isDown('KeyW') || input.isDown('KeyS')
-    || input.isDown('KeyA') || input.isDown('KeyD')
-    || input.isDown('Space') || input.isDown('ControlLeft') || input.isDown('ShiftLeft')
-    || input.primaryDown;
-  const deadzone = steering ? FOLLOW_DEADZONE : FOLLOW_IDLE_DEADZONE;
-  const excess = headYaw - THREE.MathUtils.clamp(headYaw, -deadzone, deadzone);
-  const turn = excess * Math.min(1, dt * (steering ? FOLLOW_RATE : FOLLOW_RATE * 0.35));
-  podYaw += turn;
-  headYaw -= turn;
+  // The pod turns on Q and E, not by where you are looking.
+  //
+  // It used to follow your gaze past a detent, which sounded elegant and played
+  // badly: the pod drifted whenever you glanced at an instrument, and aiming the
+  // drill and steering the machine fought each other over one input. Now the mouse
+  // only ever moves the pilot's head, and turning is a key you hold. Everything in
+  // the cabin stays where you left it.
+  const turnInput = input.axis('KeyE', 'KeyQ');
+  if (live && turnInput !== 0) podYaw += turnInput * TURN_RATE * dt;
 
   // Head tracking rides on top of the mouse look: the tracker moves the pilot's
   // head inside the cabin, the mouse still steers the pod. The follow detent above
@@ -331,8 +375,6 @@ function update(dt, elapsed) {
   interaction.update(dt);
   if (input.primaryPressed) interaction.activate();
 
-  const live = session.systemsLive;
-
   // --- Thrust ---
   forward.set(-Math.sin(podYaw), 0, -Math.cos(podYaw));
   right.set(Math.cos(podYaw), 0, -Math.sin(podYaw));
@@ -341,7 +383,7 @@ function update(dt, elapsed) {
   const strafe = live ? input.axis('KeyA', 'KeyD') : 0;
   const lift = live
     ? (input.isDown('Space') ? 1 : 0)
-      - (input.isDown('ControlLeft') || input.isDown('ShiftLeft') ? 1 : 0)
+      - (input.isDown('ShiftLeft') || input.isDown('ShiftRight') ? 1 : 0)
     : 0;
 
   const powered = live && pod.fuel > 0;
@@ -371,15 +413,27 @@ function update(dt, elapsed) {
     if (hit) session.post(`FAULT: ${hit.name} DEGRADED`, 4);
     shake = Math.min(1, shake + over * 0.06);
     fx.impactDust(body.position, over);
+    audio.thud(over);
   }
 
   // --- Drill ---
-  aimDir.set(
-    -Math.sin(viewYaw) * Math.cos(lookPitch),
-    Math.sin(lookPitch),
-    -Math.cos(viewYaw) * Math.cos(lookPitch),
-  );
-  const wantDrill = input.primaryDown && live && drillClutch && !interaction.blockingDrill;
+  // Ctrl is a dedicated "cut straight down" — the single most common thing a mining
+  // pod does, and it should not require holding the mouse at exactly ninety degrees
+  // while you are also trying to read the depth gauge.
+  const drillDown = live && drillClutch
+    && (input.isDown('ControlLeft') || input.isDown('ControlRight'));
+
+  if (drillDown) {
+    aimDir.set(0, -1, 0);
+  } else {
+    aimDir.set(
+      -Math.sin(viewYaw) * Math.cos(lookPitch),
+      Math.sin(lookPitch),
+      -Math.cos(viewYaw) * Math.cos(lookPitch),
+    );
+  }
+  const wantDrill = drillDown
+    || (input.primaryDown && live && drillClutch && !interaction.blockingDrill);
   const result = drill.update(dt, {
     origin: body.position,
     direction: aimDir,
@@ -399,6 +453,8 @@ function update(dt, elapsed) {
   }
   if (result.broke) {
     fx.blockBurst(result.broke.position, result.broke.color, result.broke.ore);
+    audio.breakBlock(result.broke.id);
+    if (result.broke.ore && result.broke.stowed) audio.stow(result.broke.value);
     shake = Math.min(0.6, shake + 0.10);
     if (result.broke.ore) {
       session.post(
@@ -421,6 +477,7 @@ function update(dt, elapsed) {
           fx.blockBurst(event.position, 0xffd07a, true);
           fx.impactDust(event.position, 22);
           shake = Math.min(1.4, shake + 0.5 + event.strength);
+          audio.explosion(event.strength);
           session.post(
             event.damage > 1
               ? `GAS DETONATION — ${Math.round(event.damage)} DAMAGE`
@@ -437,6 +494,7 @@ function update(dt, elapsed) {
         case 'rockfall-hit':
           fx.impactDust(event.position, 14);
           shake = Math.min(1, shake + 0.35);
+          audio.thud(9);
           session.post('ROCKFALL — HULL STRUCK');
           break;
         case 'rock-landed':
@@ -444,6 +502,7 @@ function update(dt, elapsed) {
           break;
         case 'quake':
           shake = Math.min(1.2, shake + 0.9);
+          audio.thud(16);
           session.post('SEISMIC EVENT — STRATA SETTLING');
           break;
         default:
@@ -464,6 +523,15 @@ function update(dt, elapsed) {
   }
   fx.update(dt);
   session.update(dt);
+
+  // Continuous voices. The drill's timbre comes from the block under the bit, so
+  // the rock you are cutting is audible before you read the assay strip.
+  audio.drill(dt, {
+    active: drill.active,
+    blockId: drill.target?.id ?? null,
+    power: pod.drillPower,
+  });
+  audio.thruster(dt, live && thrusting ? (lift > 0 ? 1 : 0.55) : 0);
 
   // --- Mr Natas ---
   // Beats are evaluated against a snapshot of the run and printed as paper. The

@@ -51,15 +51,10 @@ export function createPodExterior() {
   add(new THREE.BoxGeometry(0.62, 0.34, 0.08), glassMat, 0, 0.10, -0.74);
   add(new THREE.BoxGeometry(0.70, 0.06, 0.10), hazardMat, 0, -0.10, -0.75);
 
-  // Drill boom and auger.
-  add(new THREE.CylinderGeometry(0.10, 0.13, 0.30, 10), steelMat, 0, -0.16, -0.86, { rx: Math.PI / 2 });
-  for (let i = 0; i < 4; i++) {
-    add(
-      new THREE.ConeGeometry(0.11 - i * 0.014, 0.11, 6, 1, true), steelMat,
-      0, -0.16, -1.02 - i * 0.08, { rx: -Math.PI / 2, rz: i * 0.8 },
-    );
-  }
-  add(new THREE.ConeGeometry(0.05, 0.14, 6), steelMat, 0, -0.16, -1.40, { rx: -Math.PI / 2 });
+  // No drill here: the boom is its own world-space object that articulates with the
+  // pilot's aim, so modelling a second one on the hull would show two drills on the
+  // chase feed. Just the mount it swings from.
+  add(new THREE.BoxGeometry(0.22, 0.16, 0.14), steelMat, 0, -0.14, -0.80);
 
   // Headlight housings.
   for (const side of [-1, 1]) {

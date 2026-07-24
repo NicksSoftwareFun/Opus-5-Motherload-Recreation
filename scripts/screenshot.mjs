@@ -328,6 +328,38 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'sticky-note',
+    description: 'The control note taped to the left of the dash.',
+    async run(page) {
+      await page.evaluate(() => {
+        const g = window.__MOTHERLOAD__;
+        g.boot(true);
+        g.teleport(30);
+        g.look(0.30, -0.16);
+        g.simulate(0.6);
+      });
+      await page.waitForTimeout(500);
+    },
+  },
+  {
+    name: 'drill-outside',
+    description: 'The drill boom is a real object in the mine, not a prop in the cabin.',
+    async run(page) {
+      await page.evaluate(() => {
+        const g = window.__MOTHERLOAD__;
+        g.boot(true);
+        g.teleport(50);
+        g.input.primaryDown = true;
+        g.look(0.0, -0.34);
+        g.simulate(1.2);
+      });
+      await page.waitForTimeout(700);
+    },
+    async after(page) {
+      await page.evaluate(() => { window.__MOTHERLOAD__.input.primaryDown = false; });
+    },
+  },
+  {
     name: 'shaft',
     description: 'Down a carved shaft, 60 m below the surface.',
     async run(page) {

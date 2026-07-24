@@ -9,6 +9,7 @@ import { createHologram } from './hologram.js';
 import { createSensorRack } from './sensorRack.js';
 import { createProvidence } from './providence.js';
 import { createTeletype } from './teletype.js';
+import { createStickyNote } from './stickyNote.js';
 import { guardedSwitch } from './controls.js';
 import { credits } from '../game/economy.js';
 
@@ -26,7 +27,7 @@ import { credits } from '../game/economy.js';
 const DASH_Z = 0.028;
 const PANEL_Z = 0.026;
 
-export function createDashboard({ cockpit, pod, session, interaction, actions, world }) {
+export function createDashboard({ cockpit, pod, session, interaction, actions, world, audio }) {
   const { dash, overhead, consoles } = cockpit.parts;
 
   // --- Dashboard: the main terminal ---------------------------------------
@@ -163,7 +164,10 @@ export function createDashboard({ cockpit, pod, session, interaction, actions, w
     interaction.register(sw.hit, {
       kind: 'control',
       control: sw,
-      onClick: () => sw.toggle(),
+      onClick: () => {
+        const on = sw.toggle();
+        audio?.switchClack(on);
+      },
     });
   }
 
@@ -180,7 +184,9 @@ export function createDashboard({ cockpit, pod, session, interaction, actions, w
   feedKnob.group.position.set(-0.115, -0.135, PANEL_Z);
   right.add(feedKnob.group);
   interaction.register(feedKnob.hit, {
-    kind: 'control', control: feedKnob, onClick: () => feedKnob.toggle(),
+    kind: 'control',
+    control: feedKnob,
+    onClick: () => { feedKnob.toggle(); audio?.switchClack(true); },
   });
 
   const rightPlate = nameplate({ text: 'HULL OPTICS', width: 0.16, height: 0.028 });
@@ -196,7 +202,9 @@ export function createDashboard({ cockpit, pod, session, interaction, actions, w
   armSwitch.group.position.set(0.105, -0.130, PANEL_Z);
   right.add(armSwitch.group);
   interaction.register(armSwitch.hit, {
-    kind: 'control', control: armSwitch, onClick: () => armSwitch.toggle(),
+    kind: 'control',
+    control: armSwitch,
+    onClick: () => { armSwitch.toggle(); audio?.switchClack(armSwitch.on); },
   });
 
   // --- Hologram projector --------------------------------------------------
@@ -212,14 +220,24 @@ export function createDashboard({ cockpit, pod, session, interaction, actions, w
   const providence = createProvidence({ cockpit, world });
 
   // --- Teletype ------------------------------------------------------------
-  const teletype = createTeletype();
+  const teletype = createTeletype({ onStrike: () => audio?.typeTick() });
   cockpit.parts.teletypeBay.add(teletype.group);
+
+  // --- Sticky note ---------------------------------------------------------
+  // Stuck to the inside of the canopy glass, bottom-left, exactly where a real
+  // operator puts one. Lying flat on the raked dashboard it was foreshortened into
+  // an unreadable sliver; on the glass it faces the seat square-on and costs only a
+  // corner of the view, which is the trade every windscreen note has ever made.
+  const sticky = createStickyNote({ width: 0.205 });
+  sticky.group.position.set(-0.372, -0.052, -0.448);
+  cockpit.root.add(sticky.group);
 
   // --- Update --------------------------------------------------------------
   let standbyPhase = 0;
 
   return {
     terminal,
+    sticky,
     monitors,
     hologram,
     sensorRack,

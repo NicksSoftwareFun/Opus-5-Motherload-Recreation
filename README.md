@@ -45,10 +45,16 @@ menu will appear on that screen. Everything after that happens in the cockpit.
 | --- | --- |
 | `W` `A` `S` `D` | Thrust |
 | `Space` | Lift |
-| `Ctrl` / `Shift` | Descend |
-| Mouse | Move your head. Past a detent, the pod follows your gaze |
+| `Shift` | Descend |
+| `Q` / `E` | Turn the pod |
+| `Ctrl` | Drill straight down, regardless of where you are looking |
+| Mouse | Move your head. Looking never steers the pod |
+| Wheel | Zoom the canopy view in and out |
 | Left click | Drill what the sight is on — **or** operate the switch, knob or screen region it is resting on |
 | `F9` | Recentre head tracker |
+
+The same list is written on a sticky note taped to the inside of the canopy, bottom
+left, in case you forget it mid-shaft.
 
 Fly to a landing pad and your terminal becomes that vendor's console. Sell ore at the
 trader, refuel, repair, buy upgrades at the fitting shop, buy instruments at the sensor
@@ -66,10 +72,11 @@ anywhere in the project.
 | --- | --- |
 | ![A cold, dark cockpit with the standby lamp pulsing](docs/screenshots/cold-start.png) **Cold start.** The game opens with the pod switched off. A pulsing standby lamp throws amber light across the switch panel — the entire tutorial for how to begin. | ![The self-test menu on the pod terminal](docs/screenshots/boot-menu.png) **The main menu is a boot screen.** Throw master power, the terminal POSTs, and NEW EXCAVATION is a button on that CRT. Note the last line of the self-test. |
 | ![The left-hand switch bank](docs/screenshots/switch-bank.png) **The switch bank.** Master power, exterior lamps, drill clutch, cargo release and the map projector. You look at them and click them; the headlights are not a keybind. | ![The surface base seen through the canopy](docs/screenshots/base.png) **The claim.** Six installations ring the shaft mouth, each with a pad, a lit sign and a silhouette you can navigate by. |
-| ![Drilling downward with spoil flying from the bit](docs/screenshots/drilling.png) **Cutting.** The drill points wherever you look, and the sight is the boom's own optics. Ore is the only thing that glows down here. | ![The upgrade console at the fitting shop](docs/screenshots/workshop.png) **Docking is proximity.** Land on a pad and your own terminal becomes that vendor's console. No shop overlay, nothing to dismiss. |
+| ![Drilling downward with spoil flying from the bit](docs/screenshots/drilling.png) **Cutting.** The drill points where you look — or straight down on `Ctrl` — and the sight is the boom's own optics. Ore is the only thing that glows down here. | ![The upgrade console at the fitting shop](docs/screenshots/workshop.png) **Docking is proximity.** Land on a pad and your own terminal becomes that vendor's console. No shop overlay, nothing to dismiss. |
 | ![The chase camera feed on the right console](docs/screenshots/chase-feed.png) **Hull optics.** Three cameras, one CRT, one rotary knob. It is the only way to ever see the machine you are flying. | ![The volumetric mine map projected above the dash](docs/screenshots/hologram.png) **The mine map.** A projector on the dash throws up the claim with every metre you have cut, your pod inside it, and a tether to the surface. |
 | ![The chirp sonar scope and strata profiler](docs/screenshots/sensor-suite.png) **The sensor racks.** They start empty. Each module the bureau sells bolts into a named bay, so you can see the holes in your own cockpit. | ![Ore and magma visible through solid rock](docs/screenshots/providence.png) **The Providence Engine.** 666,000 credits, sold without a specification. It shows you every seam within forty metres straight through the rock, and it bills you by the second. |
 | ![The dot-matrix teletype printing a transmission](docs/screenshots/teletype.png) **Mr. Natas arrives as paper.** Transmissions clatter out of the printer beside the seat while you keep flying. Nothing stops the machine. | ![The seal at the bottom of the claim, opening](docs/screenshots/the-seal.png) **The bottom.** A chamber nobody excavated, and a door nobody built. |
+| ![A yellow sticky note taped to the canopy listing the controls](docs/screenshots/sticky-note.png) **Even the manual is furniture.** The keybinds are on a curling note a previous pilot taped to the canopy glass, coffee ring and all. There is no controls overlay to open. | ![The systems schematic showing damaged modules](docs/screenshots/faults.png) **Faults, not hit points.** Five modules take damage separately and the schematic shows which one you just lost. The repair rig services them one at a time, and charges accordingly. |
 
 ## Design rules
 
@@ -88,10 +95,18 @@ monochrome phosphor screens in thick bezels, a holographic map projector, per-mo
 damage instead of a single health bar, and mission traffic that clatters out of a
 dot-matrix teletype.
 
-The one mechanic that makes it all reachable is the **look model**. Mouse movement
-turns the pilot's *head*, not the pod; past a detent the pod follows your gaze and
-catches up. Small movements look around the cabin, large ones steer — and the follow
-disengages when you are parked, so a panel you turn to read stays where you put it.
+The one mechanic that makes it all reachable is the **look model**. The mouse moves
+the pilot's head and nothing else — you can read a gauge on the far side of the cabin
+without the pod drifting a degree. The pod turns on `Q` and `E`, like a machine with a
+yaw thruster rather than a first-person shooter with a rifle. `Ctrl` overrides the aim
+entirely and sinks the bit straight down, so the ordinary business of digging a shaft
+does not require you to hold the sight steady on the floor.
+
+Everything the cabin does, it also says out loud. Switches clack, screen regions chirp,
+the teletype hammers each character as it prints, and the drill's rumble is synthesised
+from the block under the bit — hardness sets the filter, and ore opens a resonant ring
+pitched off its value, so you can hear that you have hit something worth stopping for
+before you look down at the manifest.
 
 ## What is in it
 
@@ -104,6 +119,8 @@ disengages when you are parked, so a panel you turn to read stays where you put 
 - Per-module damage — a bad landing costs you a headlight, not just a number.
 - Hazards that each teach a different lesson: magma, gas detonation, collapses, quakes.
 - Optional OpenTrack head tracking with real positional parallax.
+- Sound with no sound files: switchgear, screen chirps, the teletype's hammer, and a
+  drill rumble synthesised from the hardness and value of the block being cut.
 - Saves that are the world seed plus the voxels you changed, so they weigh kilobytes.
 
 ## Head tracking (OpenTrack)
@@ -112,17 +129,23 @@ Optional, and off unless you run the bridge. A browser cannot open a UDP socket 
 OpenTrack cannot speak WebSocket, so a small Node process sits between them:
 
 ```bash
-npm run track      # binds udp://127.0.0.1:4242, serves ws://127.0.0.1:4243
+npm run track      # listens on udp://0.0.0.0:4242, serves ws://127.0.0.1:4243
 ```
 
-In OpenTrack, set **Output** to *UDP over network*, remote host `127.0.0.1`, remote
-port `4242`. Start tracking, then load the game — it connects on its own, and gives up
-quietly if the bridge is not there.
+In OpenTrack, set **Output** to *UDP over network* and remote port `4242`. The remote
+address can be `127.0.0.1` **or** the machine's own LAN address — the bridge binds every
+interface, so either works. On startup it prints all the addresses it can be reached on;
+point OpenTrack at any of them. Start tracking, then load the game — it connects on its
+own, and gives up quietly if the bridge is not there.
 
-The tracker only moves the pilot's head **inside the cabin**. Mouse yaw still steers
-the pod through the follow detent, and the detent reads only the mouse component, so
-leaning to see past a canopy pillar never sends the pod into a spin. Positional
-tracking is wired to real parallax against the canopy frame and the side consoles.
+If the pose never moves, the bridge tells you what is wrong: it logs the source of the
+first packet it receives, and if nothing arrives within a few seconds it says so and
+lists the addresses to try. A firewall prompt for `node.exe` on the first run is normal
+and must be allowed.
+
+The tracker only moves the pilot's head **inside the cabin** — it can never turn the
+pod, so leaning to see past a canopy pillar is always free. Positional tracking is wired
+to real parallax against the canopy frame and the side consoles.
 
 - `F9`, or the button on the terminal's SYS page, recentres. The first pose received
   also becomes centre automatically.
