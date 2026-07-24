@@ -21,10 +21,40 @@ const outDir = path.join(root, 'shots');
 /** Each scenario gets the page and may drive the game before the capture. */
 const SCENARIOS = [
   {
-    name: 'surface-survey',
-    description: 'Survey camera orbiting the claim on the Martian surface.',
+    name: 'surface',
+    description: 'Pod sitting on the claim plaza, looking out over the Martian surface.',
     async run(page) {
-      await page.waitForTimeout(1200);
+      await page.evaluate(() => {
+        const g = window.__MOTHERLOAD__;
+        g.body.position.set(32.5, 1.0, 44);
+        g.body.velocity.set(0, 0, 0);
+        g.look(0.0, -0.05);
+      });
+      await page.waitForTimeout(700);
+    },
+  },
+  {
+    name: 'shaft',
+    description: 'Down a carved shaft, 60 m below the surface.',
+    async run(page) {
+      await page.evaluate(() => {
+        const g = window.__MOTHERLOAD__;
+        g.teleport(60);
+        g.look(0.6, -0.25);
+      });
+      await page.waitForTimeout(900);
+    },
+  },
+  {
+    name: 'deep',
+    description: 'Deep strata at 200 m, where the valuable ore glows.',
+    async run(page) {
+      await page.evaluate(() => {
+        const g = window.__MOTHERLOAD__;
+        g.teleport(200);
+        g.look(1.2, -0.1);
+      });
+      await page.waitForTimeout(900);
     },
   },
 ];
