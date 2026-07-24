@@ -162,6 +162,22 @@ export function createCockpit() {
     consoles[side < 0 ? 'left' : 'right'] = g;
   }
 
+  // --- Sensor racks --------------------------------------------------------
+  // Empty bays on the side walls, outboard of the consoles. They stay bare until
+  // the Sensor Bureau sells you something to bolt into them, which makes the
+  // catalogue legible as a physical thing: you can see the holes in your cockpit.
+  const racks = {};
+  for (const side of [-1, 1]) {
+    const g = new THREE.Group();
+    g.position.set(side * 0.635, 0.06, -0.02);
+    g.rotation.set(0.12, -side * 1.25, 0);
+    root.add(g);
+    g.add(box(0.32, 0.48, 0.045, mat.hullDark, { name: 'rackPanel' }));
+    g.add(box(0.35, 0.03, 0.07, mat.frame, { y: 0.255 }));
+    g.add(box(0.35, 0.03, 0.07, mat.frame, { y: -0.255 }));
+    racks[side < 0 ? 'left' : 'right'] = g;
+  }
+
   // --- Seat ----------------------------------------------------------------
   root.add(box(0.52, 0.09, 0.44, mat.rubber, { y: -0.60, z: 0.20 }));
   root.add(box(0.52, 0.60, 0.10, mat.rubber, { y: -0.28, z: 0.42, rx: 0.10 }));
@@ -295,7 +311,7 @@ export function createCockpit() {
     scene,
     camera,
     root,
-    parts: { dash, overhead, consoles, drill, spinner, glass, canopy, shell },
+    parts: { dash, overhead, consoles, racks, drill, spinner, glass, canopy, shell },
     materials: mat,
     lights: { cabinLamp, instrumentGlow, daylight, headlightBounce, drillLamp, hemi },
 

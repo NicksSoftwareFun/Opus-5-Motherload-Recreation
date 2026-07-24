@@ -6,6 +6,9 @@ import { dialGauge, ledBar, digitDisplay, warningLamp, nameplate } from './instr
 import { toggleSwitch, rotarySelector } from './controls.js';
 import { createMonitors, FEED_LABELS } from './monitors.js';
 import { createHologram } from './hologram.js';
+import { createSensorRack } from './sensorRack.js';
+import { createProvidence } from './providence.js';
+import { guardedSwitch } from './controls.js';
 import { credits } from '../game/economy.js';
 
 /**
@@ -179,9 +182,21 @@ export function createDashboard({ cockpit, pod, session, interaction, actions, w
     kind: 'control', control: feedKnob, onClick: () => feedKnob.toggle(),
   });
 
-  const rightPlate = nameplate({ text: 'HULL OPTICS', width: 0.20, height: 0.032 });
-  rightPlate.position.set(0.075, -0.150, PANEL_Z);
+  const rightPlate = nameplate({ text: 'HULL OPTICS', width: 0.16, height: 0.028 });
+  rightPlate.position.set(-0.115, -0.198, PANEL_Z);
   right.add(rightPlate);
+
+  // The Providence Engine is armed from under a safety cover, like an ordnance
+  // release. Two deliberate actions, on the far side of the cabin from the drill.
+  const armSwitch = guardedSwitch({
+    label: 'PROVIDENCE', sub: 'ARM', size: 0.062,
+    onChange: (on) => actions.setProvidence(on),
+  });
+  armSwitch.group.position.set(0.105, -0.130, PANEL_Z);
+  right.add(armSwitch.group);
+  interaction.register(armSwitch.hit, {
+    kind: 'control', control: armSwitch, onClick: () => armSwitch.toggle(),
+  });
 
   // --- Hologram projector --------------------------------------------------
   // Mounted on the cabin root rather than the dash so the column stands vertically
@@ -191,6 +206,10 @@ export function createDashboard({ cockpit, pod, session, interaction, actions, w
   hologram.group.position.set(0.235, -0.205, -0.395);
   cockpit.root.add(hologram.group);
 
+  // --- Sensor fittings -----------------------------------------------------
+  const sensorRack = createSensorRack({ cockpit, world });
+  const providence = createProvidence({ cockpit, world });
+
   // --- Update --------------------------------------------------------------
   let standbyPhase = 0;
 
@@ -198,7 +217,10 @@ export function createDashboard({ cockpit, pod, session, interaction, actions, w
     terminal,
     monitors,
     hologram,
+    sensorRack,
+    providence,
     feedKnob,
+    armSwitch,
     switches,
     lamps,
 
@@ -226,6 +248,8 @@ export function createDashboard({ cockpit, pod, session, interaction, actions, w
 
       for (const sw of Object.values(switches)) sw.update(dt);
       feedKnob.update(dt);
+      armSwitch.update(dt);
+      armSwitch.group.visible = pod.sensors.has('providence');
       standby.setState(live ? 0 : 2, dt);
       standbyPhase += dt * 3.2;
       standbyGlow.intensity = live ? 0 : 0.35 + Math.sin(standbyPhase) * 0.30;
@@ -247,7 +271,26 @@ export function createDashboard({ cockpit, pod, session, interaction, actions, w
         on: live && state.mapOn,
         podPosition: state.podPosition,
         modified: state.modified,
+        lattice: pod.sensors.has('lattice'),
       });
+
+      sensorRack.sync(pod.sensors);
+      sensorRack.update(dt, {
+        owned: pod.sensors,
+        live,
+        position: state.podPosition,
+        podYaw: state.podYaw ?? 0,
+        drillTarget: state.drill?.target ?? null,
+        drillPower: pod.drillPower,
+      });
+
+      const word = providence.update(dt, {
+        owned: pod.sensors,
+        live,
+        position: state.podPosition,
+        pod,
+      });
+      if (word.message) session.post(word.message, 4);
     },
   };
 }

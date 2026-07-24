@@ -544,17 +544,48 @@ export function uplinkPage(ctx, api, state) {
   tabs(api, state, state.station?.page);
 }
 
-/** Placeholder until the sensor catalogue lands. */
 export function sensorPage(ctx, api, state) {
   api.clear();
   const P = api.P;
+  const { pod, sensors, sensorAvailable } = state;
   vendorHeader(api, state, 'SENSOR BUREAU');
-  api.text('NATAS INSTRUMENTATION', api.W / 2, 60, {
-    size: 15, align: 'center', bold: true, color: P.hot,
-  });
-  api.text('BUREAU CLOSED', api.W / 2, 110, { size: 18, align: 'center', bold: true });
-  api.text('INVENTORY IN TRANSIT.', api.W / 2, 138, { size: 12, align: 'center', color: P.dim });
-  api.text('CALL AGAIN.', api.W / 2, 156, { size: 12, align: 'center', color: P.dim });
+
+  let y = 32;
+  for (const module of sensors) {
+    const owned = pod.sensors.has(module.key);
+    const buyable = sensorAvailable(module.key, pod.sensors);
+    const affordable = buyable && pod.canAfford(module.cost);
+
+    api.text(module.short, PAD, y + 8, {
+      size: 13, bold: true, color: owned ? P.dim : module.key === 'providence' ? P.hot : P.ink,
+    });
+    api.text(module.mount, PAD, y + 24, { size: 10, color: P.dim });
+
+    if (owned) {
+      api.text('FITTED', api.W - PAD, y + 14, { size: 12, align: 'right', color: P.dim });
+    } else if (!buyable) {
+      api.text('LOCKED', api.W - PAD, y + 14, { size: 12, align: 'right', color: P.dim });
+    } else {
+      api.button(api.W - PAD - 104, y + 2, 104, 24, `${credits(module.cost)}`, {
+        id: `sensor:${module.key}`,
+        disabled: !affordable,
+        onClick: () => state.actions.buySensor(module.key),
+      });
+    }
+    y += 38;
+  }
+
+  api.rule(y - 4);
+  const focus = sensors.find((m) => !pod.sensors.has(m.key)) ?? sensors[sensors.length - 1];
+  api.text(
+    state.session.notice ?? focus.blurb,
+    PAD, y + 12,
+    { size: 11, color: state.session.notice ? P.hot : P.dim },
+  );
+  if (!state.session.notice && focus.warning) {
+    api.text(focus.warning, PAD, y + 26, { size: 10, color: P.hot });
+  }
+
   tabs(api, state, state.station?.page);
 }
 

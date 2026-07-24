@@ -20,6 +20,7 @@ import { Session, PHASE } from './game/session.js';
 import { credits, SERVICE, UPGRADES, upgradeTier } from './game/economy.js';
 import { createBase } from './render/base.js';
 import { stationAt, STATIONS } from './game/stations.js';
+import { SENSORS, SENSOR_BY_KEY, sensorAvailable } from './game/sensors.js';
 import { hasSave, saveGame, loadGame, applyDiff } from './game/save.js';
 import { AIR, BLOCKS } from './world/blocks.js';
 import { WORLD, POD, PHYSICS, DEBUG } from './config.js';
@@ -154,6 +155,18 @@ const actions = {
   setLights: (on) => { lightsOn = on; },
   setDrillClutch: (on) => { drillClutch = on; },
   setMap: (on) => { mapOn = on; },
+  setProvidence: (on) => {
+    dashboard.providence.setArmed(on);
+    session.post(on ? 'PROVIDENCE ENGINE ARMED — SERVICE ACCRUING' : 'PROVIDENCE ENGINE SAFE');
+  },
+  buySensor: (key) => {
+    const module = SENSOR_BY_KEY[key];
+    if (!module || pod.sensors.has(key)) return session.post('ALREADY FITTED');
+    if (!sensorAvailable(key, pod.sensors)) return session.post('PRIOR MODULE REQUIRED');
+    if (!pod.spend(module.cost)) return session.post('INSUFFICIENT CREDIT');
+    pod.sensors.add(key);
+    return session.post(`FITTED: ${module.short}`);
+  },
   jettison: () => {
     const lost = pod.jettisonCargo();
     session.post(lost > 0 ? `BAY PURGED — ${credits(lost)} LOST` : 'BAY ALREADY EMPTY');
@@ -214,6 +227,8 @@ const actions = {
 };
 
 const dashboard = createDashboard({ cockpit, pod, session, interaction, actions, world });
+// Returns hang in world space, drawn straight through the rock. See providence.js.
+view.scene.add(dashboard.providence.overlay);
 
 // --- Look model -----------------------------------------------------------
 let podYaw = 0;
@@ -407,6 +422,8 @@ function update(dt, elapsed) {
     station,
     tracker,
     upgrades: UPGRADES,
+    sensors: SENSORS,
+    sensorAvailable,
     prices: { fuel: SERVICE.FUEL_PER_LITRE, repair: SERVICE.REPAIR_PER_POINT },
     hasSave: saveAvailable,
     actions,

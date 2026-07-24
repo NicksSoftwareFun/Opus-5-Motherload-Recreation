@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { WORLD } from '../config.js';
+import { BLOCKS, LAVA } from '../world/blocks.js';
+import { scanOre, scanHazards } from '../player/sensorData.js';
 
 /**
  * The volumetric mine map.
@@ -114,6 +116,26 @@ export function createHologram(world) {
   voids.frustumCulled = false;
   spin.add(voids);
 
+  // Tomographic lattice returns: ore and hazards fused into the projection. Empty
+  // and hidden until that module is fitted.
+  const LATTICE_MAX = 2200;
+  const latticePos = new Float32Array(LATTICE_MAX * 3);
+  const latticeCol = new Float32Array(LATTICE_MAX * 3);
+  const latticeGeo = new THREE.BufferGeometry();
+  latticeGeo.setAttribute('position', new THREE.BufferAttribute(latticePos, 3));
+  latticeGeo.setAttribute('color', new THREE.BufferAttribute(latticeCol, 3));
+  latticeGeo.setDrawRange(0, 0);
+  const lattice = new THREE.Points(
+    latticeGeo,
+    new THREE.PointsMaterial({
+      size: 0.0042, sizeAttenuation: true, vertexColors: true, transparent: true,
+      opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false,
+    }),
+  );
+  lattice.frustumCulled = false;
+  lattice.visible = false;
+  spin.add(lattice);
+
   // The pod itself.
   const marker = new THREE.Mesh(
     new THREE.OctahedronGeometry(0.008),
@@ -141,6 +163,8 @@ export function createHologram(world) {
   spin.add(tether);
 
   const tmp = new THREE.Vector3();
+  const col = new THREE.Color();
+  let latticeTimer = 0;
   let deployed = 0;
   let lastCount = -1;
   let rebuildTimer = 0;
@@ -178,7 +202,7 @@ export function createHologram(world) {
      * @param {boolean} on   MAP switch state
      * @param {object} podPosition world-space pod position
      */
-    update(dt, { on, podPosition, modified }) {
+    update(dt, { on, podPosition, modified, lattice: latticeOn = false }) {
       t += dt;
       // Deploy/stow: the whole assembly sinks into the dash when switched off.
       deployed += ((on ? 1 : 0) - deployed) * Math.min(1, dt * 5);
@@ -197,6 +221,43 @@ export function createHologram(world) {
       if (modified.size !== lastCount && rebuildTimer > 0.4) {
         rebuildTimer = 0;
         rebuild(modified);
+      }
+
+      // Tomographic returns, refreshed on their own slow clock.
+      lattice.visible = latticeOn;
+      if (latticeOn) {
+        latticeTimer += dt;
+        if (latticeTimer > 1.2) {
+          latticeTimer = 0;
+          let n = 0;
+          const write = (hx, hy, hz, hex) => {
+            if (n >= LATTICE_MAX) return;
+            mapPoint(
+              Math.floor(podPosition.x) + hx,
+              Math.floor(-podPosition.y) - hy,
+              Math.floor(podPosition.z) + hz,
+              tmp,
+            );
+            latticePos[n * 3] = tmp.x;
+            latticePos[n * 3 + 1] = tmp.y;
+            latticePos[n * 3 + 2] = tmp.z;
+            col.setHex(hex);
+            latticeCol[n * 3] = col.r;
+            latticeCol[n * 3 + 1] = col.g;
+            latticeCol[n * 3 + 2] = col.b;
+            n++;
+          };
+          for (const h of scanOre(world, podPosition, 30, 2)) {
+            write(h.dx, h.dy, h.dz, BLOCKS[h.id].glow || h.color);
+          }
+          for (const h of scanHazards(world, podPosition, 30, 3)) {
+            write(h.dx, h.dy, h.dz, h.id === LAVA ? 0xff4a1e : 0x88ff4a);
+          }
+          latticeGeo.setDrawRange(0, n);
+          latticeGeo.attributes.position.needsUpdate = true;
+          latticeGeo.attributes.color.needsUpdate = true;
+        }
+        lattice.material.opacity = 0.95 * deployed * flicker;
       }
 
       // Pod marker, with a tether up to the surface.

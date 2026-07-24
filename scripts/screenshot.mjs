@@ -197,6 +197,60 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'sensor-bureau',
+    description: 'The Sensor Bureau catalogue, with the Providence Engine at the bottom.',
+    async run(page) {
+      await page.evaluate(() => {
+        const g = window.__MOTHERLOAD__;
+        g.boot(true);
+        g.pod.cash = 900000;
+        const s = g.stations.find((x) => x.key === 'sensors');
+        g.body.position.set(s.x, 1.0, s.z);
+        g.body.velocity.set(0, 0, 0);
+        g.look(0.0, -0.72);
+        g.simulate(0.5);
+      });
+      await page.waitForTimeout(500);
+    },
+  },
+  {
+    name: 'sensor-suite',
+    description: 'Port rack: chirp sonar scope and strata profiler, both live.',
+    async run(page) {
+      await page.evaluate(() => {
+        const g = window.__MOTHERLOAD__;
+        g.boot(true);
+        for (const k of ['densitometer', 'sonar', 'profiler', 'thermal', 'lattice']) {
+          g.pod.sensors.add(k);
+        }
+        g.teleport(96);
+        g.look(1.18, -0.16);
+        g.simulate(2.5);
+      });
+      await page.waitForTimeout(900);
+    },
+  },
+  {
+    name: 'providence',
+    description: 'The Providence Engine armed: ore and magma seen through solid rock.',
+    async run(page) {
+      await page.evaluate(() => {
+        const g = window.__MOTHERLOAD__;
+        g.boot(true);
+        for (const s of ['densitometer', 'sonar', 'profiler', 'thermal', 'lattice', 'providence']) {
+          g.pod.sensors.add(s);
+        }
+        g.pod.cash = 500000;
+        g.teleport(150);
+        g.dashboard.providence.setArmed(true);
+        g.dashboard.armSwitch.setState(true);
+        g.look(0.15, -0.08);
+        g.simulate(3.0);
+      });
+      await page.waitForTimeout(900);
+    },
+  },
+  {
     name: 'shaft',
     description: 'Down a carved shaft, 60 m below the surface.',
     async run(page) {
