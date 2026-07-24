@@ -27,6 +27,12 @@ export class ChunkManager {
     this.chunks = new Map();
     this.dirty = new Set();
     this.stats = { built: 0, meshMs: 0, live: 0 };
+    /**
+     * Every voxel the player has changed, as flatIndex -> blockId. This *is* the
+     * save file: the world regenerates from its seed and this map is replayed on
+     * top, so a save is kilobytes rather than the megabyte the grid occupies.
+     */
+    this.modified = new Map();
   }
 
   key(cx, cy, cz) {
@@ -61,6 +67,7 @@ export class ChunkManager {
   setBlock(x, vy, z, id) {
     const prev = this.world.set(x, vy, z, id);
     if (prev === -1 || prev === id) return prev;
+    this.modified.set(this.world.index(x, vy, z), id);
     this.markDirty(x, vy, z);
     return prev;
   }

@@ -12,7 +12,11 @@ import { BLOCKS } from '../world/blocks.js';
 
 const PAD = 12;
 
-/** Tab strip along the bottom. Present on every in-flight page. */
+/**
+ * Tab strip along the bottom. Present on every in-flight page.
+ * While docked, the station gets its own tab so you can check the manifest without
+ * having to lift off and land again.
+ */
 function tabs(api, state, active) {
   const items = [
     ['status', 'STATUS'],
@@ -20,6 +24,7 @@ function tabs(api, state, active) {
     ['systems', 'SYS'],
     ['manual', 'MANUAL'],
   ];
+  if (state.station) items.unshift([state.station.page, 'DOCK']);
   const w = (api.W - PAD * 2) / items.length;
   items.forEach(([id, label], i) => {
     api.button(PAD + i * w + 2, api.H - 34, w - 4, 26, label, {
@@ -322,6 +327,216 @@ export function manualPage(ctx, api, state) {
   tabs(api, state, 'manual');
 }
 
+// --- Vendor consoles -------------------------------------------------------
+// Every station reuses the same furniture: a header identifying the uplink, the
+// pod's relevant number, and one or two large buttons. They are terminals bolted to
+// a shed on Mars, not a storefront.
+
+function vendorHeader(api, state, title) {
+  api.title(title, credits(state.pod.cash));
+}
+
+export function fuelPage(ctx, api, state) {
+  api.clear();
+  const { pod, prices } = state;
+  const P = api.P;
+  vendorHeader(api, state, 'FUEL DEPOT');
+
+  const need = pod.maxFuel - pod.fuel;
+  const fullCost = Math.ceil(need * prices.fuel);
+  const partial = Math.min(need, 25);
+  const partialCost = Math.ceil(partial * prices.fuel);
+
+  api.text('TANK', PAD, 52, { size: 12, color: P.dim });
+  api.bar(PAD + 62, 45, api.W - PAD * 2 - 130, 15, pod.fuelFraction);
+  api.text(`${Math.round(pod.fuel)}/${pod.maxFuel}L`, api.W - PAD, 52, {
+    size: 13, align: 'right', bold: true,
+  });
+  api.text(`RATE  ${prices.fuel.toFixed(2)} CR / LITRE`, PAD, 78, { size: 12, color: P.dim });
+  api.rule(92);
+
+  api.button(PAD, 106, api.W - PAD * 2, 34,
+    need < 0.5 ? 'TANK FULL' : `FILL TANK — ${credits(fullCost)} CR`, {
+      id: 'fuel:full',
+      disabled: need < 0.5 || !pod.canAfford(fullCost),
+      onClick: () => state.actions.buyFuel(need),
+    });
+  api.button(PAD, 150, api.W - PAD * 2, 30,
+    `ADD ${Math.round(partial)}L — ${credits(partialCost)} CR`, {
+      id: 'fuel:part',
+      disabled: need < 0.5 || !pod.canAfford(partialCost),
+      onClick: () => state.actions.buyFuel(partial),
+    });
+
+  api.text('HYDRAZINE IS BILLED TO YOUR CONTRACT.', PAD, 200, { size: 11, color: P.dim });
+  if (state.session.notice) {
+    api.text(state.session.notice, PAD, 220, { size: 12, color: P.hot, bold: true });
+  }
+  tabs(api, state, state.station?.page);
+}
+
+export function repairPage(ctx, api, state) {
+  api.clear();
+  const { pod, prices } = state;
+  const P = api.P;
+  vendorHeader(api, state, 'REPAIR RIG');
+
+  const missing = pod.maxHull - pod.hull;
+  const fullCost = Math.ceil(missing * prices.repair);
+  const partial = Math.min(missing, 25);
+  const partialCost = Math.ceil(partial * prices.repair);
+
+  api.text('HULL', PAD, 52, { size: 12, color: P.dim });
+  api.bar(PAD + 62, 45, api.W - PAD * 2 - 130, 15, pod.hullFraction, {
+    color: pod.hullFraction < 0.3 ? P.hot : P.ink,
+  });
+  api.text(`${Math.round(pod.hull)}/${pod.maxHull}`, api.W - PAD, 52, {
+    size: 13, align: 'right', bold: true,
+  });
+  api.text(`RATE  ${prices.repair.toFixed(2)} CR / POINT`, PAD, 78, { size: 12, color: P.dim });
+  api.rule(92);
+
+  api.button(PAD, 106, api.W - PAD * 2, 34,
+    missing < 0.5 ? 'HULL SOUND' : `FULL REPAIR — ${credits(fullCost)} CR`, {
+      id: 'repair:full',
+      disabled: missing < 0.5 || !pod.canAfford(fullCost),
+      onClick: () => state.actions.repairHull(missing),
+    });
+  api.button(PAD, 150, api.W - PAD * 2, 30,
+    `PATCH ${Math.round(partial)} — ${credits(partialCost)} CR`, {
+      id: 'repair:part',
+      disabled: missing < 0.5 || !pod.canAfford(partialCost),
+      onClick: () => state.actions.repairHull(partial),
+    });
+
+  api.text('PLATING ONLY. WE DO NOT ASK WHAT HIT YOU.', PAD, 200, { size: 11, color: P.dim });
+  if (state.session.notice) {
+    api.text(state.session.notice, PAD, 220, { size: 12, color: P.hot, bold: true });
+  }
+  tabs(api, state, state.station?.page);
+}
+
+export function traderPage(ctx, api, state) {
+  api.clear();
+  const { pod } = state;
+  const P = api.P;
+  vendorHeader(api, state, 'ORE TRADER');
+
+  const rows = pod.manifest();
+  let y = 48;
+  if (!rows.length) {
+    api.text('NOTHING TO ASSAY.', PAD, y, { size: 14, color: P.dim });
+  } else {
+    for (const row of rows.slice(0, 6)) {
+      api.text(`${row.count}x ${row.name.toUpperCase()}`, PAD, y, { size: 13 });
+      api.text(credits(row.value), api.W - PAD, y, { size: 13, align: 'right', bold: true });
+      y += 19;
+    }
+    if (rows.length > 6) {
+      api.text(`+${rows.length - 6} MORE`, PAD, y, { size: 11, color: P.dim });
+      y += 16;
+    }
+  }
+
+  const total = pod.cargoValue();
+  api.rule(api.H - 122);
+  api.text('ASSAYED VALUE', PAD, api.H - 104, { size: 12, color: P.dim });
+  api.text(credits(total), api.W - PAD, api.H - 104, {
+    size: 18, align: 'right', bold: true, color: P.hot,
+  });
+  api.button(PAD, api.H - 88, api.W - PAD * 2, 34,
+    total > 0 ? `SELL ALL — ${credits(total)} CR` : 'BAY EMPTY', {
+      id: 'trade:sell',
+      disabled: total <= 0,
+      onClick: () => state.actions.sellAll(),
+    });
+  tabs(api, state, state.station?.page);
+}
+
+export function workshopPage(ctx, api, state) {
+  api.clear();
+  const { pod, upgrades } = state;
+  const P = api.P;
+  vendorHeader(api, state, 'FITTING SHOP');
+
+  let y = 34;
+  for (const line of upgrades) {
+    const level = pod.upgradeLevel(line.key);
+    const current = line.tiers[level];
+    const next = level + 1 < line.tiers.length ? line.tiers[level + 1] : null;
+    const affordable = next && pod.canAfford(next.cost);
+
+    api.text(line.name.toUpperCase(), PAD, y + 9, { size: 12 });
+    api.text(`${current.value}${line.unit}`, PAD + 126, y + 9, { size: 12, color: P.dim });
+    if (next) {
+      api.text(`> ${next.value}${line.unit}`, PAD + 190, y + 9, { size: 12, color: P.hot });
+      api.button(api.W - PAD - 96, y, 96, 20, credits(next.cost), {
+        id: `up:${line.key}`,
+        disabled: !affordable,
+        onClick: () => state.actions.buyUpgrade(line.key),
+      });
+    } else {
+      api.text('MAX', api.W - PAD, y + 9, { size: 12, align: 'right', color: P.dim });
+    }
+    y += 25;
+  }
+
+  api.rule(y + 2);
+  api.text(
+    state.session.notice ?? 'FITTINGS ARE FINAL. NO REFUNDS ON THIS CONTRACT.',
+    PAD, y + 20,
+    { size: 11, color: state.session.notice ? P.hot : P.dim },
+  );
+  tabs(api, state, state.station?.page);
+}
+
+export function uplinkPage(ctx, api, state) {
+  api.clear();
+  const { pod } = state;
+  const P = api.P;
+  vendorHeader(api, state, 'UPLINK TOWER');
+
+  const rows = [
+    ['DEEPEST', `${Math.round(pod.deepestDepth)} M`],
+    ['BLOCKS CUT', String(pod.stats.blocksDrilled)],
+    ['ORE RECOVERED', `${pod.stats.oreMined} U`],
+    ['LIFETIME EARNINGS', credits(pod.stats.earned)],
+    ['RECOVERIES', String(pod.stats.rescues)],
+  ];
+  let y = 50;
+  for (const [k, v] of rows) {
+    api.text(k, PAD, y, { size: 12, color: P.dim });
+    api.text(v, api.W - PAD, y, { size: 13, align: 'right', bold: true });
+    y += 21;
+  }
+
+  api.rule(y + 2);
+  api.button(PAD, y + 14, api.W - PAD * 2, 34, 'TRANSMIT CONTRACT STATE', {
+    id: 'uplink:save',
+    onClick: () => state.actions.saveGame(),
+  });
+  api.text(
+    state.session.notice ?? 'NATAS HEAVY INDUSTRIES ACKNOWLEDGES RECEIPT.',
+    PAD, y + 62,
+    { size: 11, color: state.session.notice ? P.hot : P.dim },
+  );
+  tabs(api, state, state.station?.page);
+}
+
+/** Placeholder until the sensor catalogue lands. */
+export function sensorPage(ctx, api, state) {
+  api.clear();
+  const P = api.P;
+  vendorHeader(api, state, 'SENSOR BUREAU');
+  api.text('NATAS INSTRUMENTATION', api.W / 2, 60, {
+    size: 15, align: 'center', bold: true, color: P.hot,
+  });
+  api.text('BUREAU CLOSED', api.W / 2, 110, { size: 18, align: 'center', bold: true });
+  api.text('INVENTORY IN TRANSIT.', api.W / 2, 138, { size: 12, align: 'center', color: P.dim });
+  api.text('CALL AGAIN.', api.W / 2, 156, { size: 12, align: 'center', color: P.dim });
+  tabs(api, state, state.station?.page);
+}
+
 export const PAGES = {
   off: offPage,
   boot: bootPage,
@@ -329,4 +544,10 @@ export const PAGES = {
   cargo: cargoPage,
   systems: systemsPage,
   manual: manualPage,
+  'vendor:fuel': fuelPage,
+  'vendor:repair': repairPage,
+  'vendor:trader': traderPage,
+  'vendor:workshop': workshopPage,
+  'vendor:uplink': uplinkPage,
+  'vendor:sensors': sensorPage,
 };

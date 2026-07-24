@@ -107,6 +107,54 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'base',
+    description: 'The surface base ringing the shaft mouth, seen from the plaza.',
+    async run(page) {
+      await page.evaluate(() => {
+        const g = window.__MOTHERLOAD__;
+        g.boot(true);
+        g.body.position.set(32.5, 2.4, 32.5);
+        g.body.velocity.set(0, 0, 0);
+        g.look(0.0, 0.02, { pod: -1.5708 });
+        g.simulate(0.3);
+      });
+      await page.waitForTimeout(600);
+    },
+  },
+  {
+    name: 'workshop',
+    description: 'Docked at the fitting shop; the terminal is the upgrade console.',
+    async run(page) {
+      await page.evaluate(() => {
+        const g = window.__MOTHERLOAD__;
+        g.boot(true);
+        g.pod.cash = 42000;
+        const s = g.stations.find((x) => x.key === 'workshop');
+        g.body.position.set(s.x, 1.0, s.z);
+        g.body.velocity.set(0, 0, 0);
+        g.look(0.0, -0.72);
+        g.simulate(0.5);
+      });
+      await page.waitForTimeout(500);
+    },
+  },
+  {
+    name: 'trader',
+    description: 'Docked at the ore trader with a full bay.',
+    async run(page) {
+      await page.evaluate(() => {
+        const g = window.__MOTHERLOAD__;
+        g.pod.addOre(8, 4); g.pod.addOre(9, 2); g.pod.addOre(7, 3);
+        const s = g.stations.find((x) => x.key === 'trader');
+        g.body.position.set(s.x, 1.0, s.z);
+        g.body.velocity.set(0, 0, 0);
+        g.look(0.0, -0.72);
+        g.simulate(0.5);
+      });
+      await page.waitForTimeout(500);
+    },
+  },
+  {
     name: 'shaft',
     description: 'Down a carved shaft, 60 m below the surface.',
     async run(page) {

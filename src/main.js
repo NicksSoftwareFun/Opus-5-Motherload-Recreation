@@ -15,7 +15,10 @@ import { integrate, depthOf } from './player/physics.js';
 import { Pod } from './player/pod.js';
 import { Drill } from './player/drill.js';
 import { Session, PHASE } from './game/session.js';
-import { credits } from './game/economy.js';
+import { credits, SERVICE, UPGRADES, upgradeTier } from './game/economy.js';
+import { createBase } from './render/base.js';
+import { stationAt, STATIONS } from './game/stations.js';
+import { hasSave, saveGame, loadGame, applyDiff } from './game/save.js';
 import { AIR, BLOCKS } from './world/blocks.js';
 import { WORLD, POD, PHYSICS, DEBUG } from './config.js';
 
@@ -37,6 +40,9 @@ const input = new Input(view.renderer.domElement);
 
 const surface = createSurface(seed);
 view.scene.add(surface.group);
+
+const base = createBase();
+view.scene.add(base.group);
 
 const world = new VoxelWorld();
 const genInfo = generateWorld(world, seed);
@@ -98,12 +104,38 @@ const body = {
 let lightsOn = true;
 let drillClutch = true;
 let manualPage = 0;
+let station = null;
+let saveAvailable = hasSave();
+
+/** Reset the world to pristine, then replay a saved diff over it if there is one. */
+function resetWorld(diff = null) {
+  generateWorld(world, seed);
+  chunks.modified.clear();
+  if (diff) {
+    applyDiff(world, diff);
+    for (let i = 0; i < diff.length; i += 2) chunks.modified.set(diff[i], diff[i + 1]);
+  }
+  // Everything that was meshed is now wrong; drop it and rebuild around the pod.
+  for (const key of [...chunks.chunks.keys()]) chunks._unload(key);
+  chunks.dirty.clear();
+}
 
 const session = new Session({
   pod,
-  hasSave: () => false,
-  onStartRun: () => {
-    body.position.set(WORLD.CENTER_X, 1.0, WORLD.CENTER_Z);
+  hasSave: () => saveAvailable,
+  onStartRun: (fresh) => {
+    if (fresh) {
+      resetWorld();
+      Object.assign(pod, new Pod());
+      body.position.set(WORLD.CENTER_X, 1.0, WORLD.CENTER_Z);
+    } else {
+      const data = loadGame();
+      if (data) {
+        resetWorld(data.diff);
+        Object.assign(pod, data.pod);
+        body.position.set(...data.position);
+      }
+    }
     body.velocity.set(0, 0, 0);
     chunks.prime(body.position);
   },
@@ -120,6 +152,47 @@ const actions = {
   setPage: (p) => { session.page = p; },
   setManualPage: (n) => { manualPage = (n + 3) % 3; },
   startRun: (fresh) => session.startRun(fresh),
+
+  buyFuel: (litres) => {
+    const cost = Math.ceil(litres * SERVICE.FUEL_PER_LITRE);
+    if (!pod.spend(cost)) return session.post('INSUFFICIENT CREDIT');
+    const added = pod.refuel(litres);
+    return session.post(`+${added.toFixed(0)}L — ${credits(cost)} CR`);
+  },
+  repairHull: (points) => {
+    const cost = Math.ceil(points * SERVICE.REPAIR_PER_POINT);
+    if (!pod.spend(cost)) return session.post('INSUFFICIENT CREDIT');
+    const done = pod.repair(points);
+    return session.post(`+${done.toFixed(0)} PLATING — ${credits(cost)} CR`);
+  },
+  sellAll: () => {
+    const units = pod.cargoUnits;
+    const total = pod.sellCargo();
+    session.post(total > 0 ? `${units}U ASSAYED — ${credits(total)} CR` : 'BAY EMPTY');
+  },
+  buyUpgrade: (key) => {
+    const level = pod.upgradeLevel(key);
+    const next = upgradeTier(key, level + 1);
+    if (!next || level >= 5) return session.post('ALREADY AT MAXIMUM SPEC');
+    if (!pod.spend(next.cost)) return session.post('INSUFFICIENT CREDIT');
+    pod.applyUpgrade(key);
+    return session.post(`FITTED: ${next.name.toUpperCase()}`);
+  },
+  saveGame: () => {
+    const result = saveGame({
+      seed,
+      pod,
+      position: body.position,
+      modified: chunks.modified,
+      deepest: pod.deepestDepth,
+    });
+    saveAvailable = result.ok;
+    session.post(
+      result.ok
+        ? `TRANSMITTED — ${result.blocks} EDITS, ${(result.bytes / 1024).toFixed(1)} KB`
+        : 'TRANSMISSION FAILED',
+    );
+  },
 };
 
 const dashboard = createDashboard({ cockpit, pod, session, interaction, actions });
@@ -257,12 +330,29 @@ function update(dt, elapsed) {
 
   view.setDepth(depth);
   surface.update(dt, body.position);
+  base.update(dt);
+
+  // Docking is proximity: land on a pad and the terminal becomes that vendor's
+  // console. Leaving the pad hands the tube back to the status page.
+  const nowStation = live ? stationAt(body.position) : null;
+  if (nowStation !== station) {
+    station = nowStation;
+    if (station) {
+      session.page = station.page;
+      session.post(`UPLINK ESTABLISHED — ${station.name}`);
+    } else if (session.page.startsWith('vendor:')) {
+      session.page = 'status';
+    }
+  }
 
   const speed = -body.velocity.y;
   const uiState = {
     pod, session, drill, depth, speed, time: elapsed,
     manualPage,
-    hasSave: false,
+    station,
+    upgrades: UPGRADES,
+    prices: { fuel: SERVICE.FUEL_PER_LITRE, repair: SERVICE.REPAIR_PER_POINT },
+    hasSave: saveAvailable,
     actions,
   };
   dashboard.update(dt, uiState);
@@ -308,6 +398,8 @@ window.__MOTHERLOAD__ = {
   pod,
   drill,
   session,
+  base,
+  stations: STATIONS,
   fx,
   input,
   genInfo,
