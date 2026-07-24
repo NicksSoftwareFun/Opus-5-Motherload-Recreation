@@ -4,6 +4,7 @@ import { Input } from './core/input.js';
 import { createScene } from './render/scene.js';
 import { createSurface } from './render/surface.js';
 import { createBlockAtlas, createBlockMaterials } from './render/materials.js';
+import { createCockpit } from './render/cockpit.js';
 import { VoxelWorld } from './world/voxelWorld.js';
 import { generateWorld } from './world/generator.js';
 import { ChunkManager } from './world/chunkManager.js';
@@ -36,10 +37,28 @@ const materials = createBlockMaterials(atlas);
 const chunks = new ChunkManager(world, atlas, materials);
 view.scene.add(chunks.group);
 
-// A dim fill light rides with the pod so the tunnel around you never goes to pure
-// black before the headlights exist.
-const podLight = new THREE.PointLight(0xffd9b0, 26, 30, 1.5);
-view.scene.add(podLight);
+const cockpit = createCockpit();
+cockpit.resize(window.innerWidth / window.innerHeight);
+window.addEventListener('resize', () => cockpit.resize(window.innerWidth / window.innerHeight));
+
+// Headlights ride on a rig that copies the pod's orientation, so the beam always
+// goes where the pilot is looking. Underground they are the only light there is.
+const headRig = new THREE.Object3D();
+view.scene.add(headRig);
+
+const headlights = [-1, 1].map((side) => {
+  const lamp = new THREE.SpotLight(0xfff0cf, 42, 40, 0.72, 0.92, 1.3);
+  lamp.position.set(side * 0.28, -0.12, -0.1);
+  lamp.target.position.set(side * 0.9, -0.6, -9);
+  headRig.add(lamp);
+  headRig.add(lamp.target);
+  return lamp;
+});
+
+// A short-range fill so the rock immediately around the pod is never pure black —
+// the spots alone leave the walls beside you invisible in a 1 m shaft.
+const podFill = new THREE.PointLight(0xffd9b0, 3.2, 7, 1.8);
+headRig.add(podFill);
 
 const body = {
   position: new THREE.Vector3(WORLD.CENTER_X, 1.2, WORLD.CENTER_Z),
@@ -78,14 +97,25 @@ function update(dt) {
 
   view.camera.position.copy(body.position);
   view.camera.rotation.set(pitch, yaw, 0, 'YXZ');
-  podLight.position.copy(body.position);
-  view.setDepth(depthOf(body.position));
+  headRig.position.copy(body.position);
+  headRig.rotation.copy(view.camera.rotation);
+
+  const depth = depthOf(body.position);
+  view.setDepth(depth);
   surface.update(dt, body.position);
+  cockpit.update(dt, { depth, drilling: input.primaryDown, velocity: body.velocity, power: 1 });
 }
 
 function render() {
   chunks.update(body.position);
-  view.renderer.render(view.scene, view.camera);
+  const r = view.renderer;
+  r.autoClear = true;
+  r.render(view.scene, view.camera);
+  // Second pass: the cabin, over a cleared depth buffer. See render/cockpit.js.
+  r.autoClear = false;
+  r.clearDepth();
+  r.render(cockpit.scene, cockpit.camera);
+  r.autoClear = true;
   input.endFrame();
 }
 
@@ -99,6 +129,8 @@ window.__MOTHERLOAD__ = {
   three: THREE.REVISION,
   loop,
   view,
+  cockpit,
+  headlights,
   world,
   chunks,
   body,

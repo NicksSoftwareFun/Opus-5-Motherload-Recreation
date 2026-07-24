@@ -13,8 +13,11 @@ import { fbm2, mulberry32, clamp, smoothstep } from '../core/rng.js';
  * shaft mouth for the surface base to stand on.
  */
 
-const EXTENT = 340; // metres of terrain beyond the claim in every direction
-const CELL = 5.5; // faceted cell size — big enough to read as low-poly
+// CELL must divide both EXTENT and the claim width, so the terrain grid lines up
+// exactly with the claim boundary. When it did not, cells straddling the edge were
+// skipped and left a bright seam of open sky ringing the plaza.
+const EXTENT = 336; // metres of terrain beyond the claim in every direction
+const CELL = 8; // faceted cell size — big enough to read as low-poly
 const BLEND = 26; // metres over which terrain height eases down to the claim plane
 
 function terrainHeight(x, z, seed) {
@@ -35,7 +38,10 @@ function distanceToClaim(x, z) {
 function heightAt(x, z, seed) {
   const d = distanceToClaim(x, z);
   if (d <= 0) return 0;
-  return terrainHeight(x, z, seed) * smoothstep(0, BLEND, d);
+  // Hold the first 16 m dead flat before the dunes start. Sloping terrain right at
+  // the claim edge caught the low sun and drew a bright dashed line around the
+  // plaza; a flat apron reads as graded ground and removes it.
+  return terrainHeight(x, z, seed) * smoothstep(16, 16 + BLEND, d);
 }
 
 function buildTerrain(seed) {

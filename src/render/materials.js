@@ -140,6 +140,44 @@ function paintGas(ctx, emCtx, tile) {
   emCtx.putImageData(em, ox, oy);
 }
 
+/**
+ * Build the mip chain by hand, downsampling every tile from its own pixels only.
+ *
+ * A texture atlas cannot use automatic mipmaps: each level halves the image and
+ * averages across the tile boundaries, so by level three a gas pocket is wearing
+ * the ruby tile next door. Downsampling per tile keeps every level clean, which
+ * means the mine can have proper minification and the plaza stops shimmering.
+ */
+function buildTileMipmaps(source) {
+  const levels = [];
+  const tiles = COLS; // square atlas, COLS === ROWS
+  for (let level = 0; ; level++) {
+    const size = source.width >> level;
+    const tileSize = size / tiles;
+    if (tileSize < 1) break;
+
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = 'high';
+
+    const srcTile = source.width / tiles;
+    for (let ty = 0; ty < tiles; ty++) {
+      for (let tx = 0; tx < tiles; tx++) {
+        g.drawImage(
+          source,
+          tx * srcTile, ty * srcTile, srcTile, srcTile,
+          tx * tileSize, ty * tileSize, tileSize, tileSize,
+        );
+      }
+    }
+    levels.push(c);
+    if (size === 1) break;
+  }
+  return levels;
+}
+
 export function createBlockAtlas() {
   const albedo = document.createElement('canvas');
   albedo.width = albedo.height = ATLAS;
@@ -152,7 +190,7 @@ export function createBlockAtlas() {
   emCtx.fillRect(0, 0, ATLAS, ATLAS);
 
   // Plain strata.
-  paintStone(ctx, 0, 0x8a5233, { contrast: 0.62, freq: 0.07, seed: 11, cracks: 0.25 });
+  paintStone(ctx, 0, 0x9c5230, { contrast: 0.62, freq: 0.07, seed: 11, cracks: 0.25 });
   paintStone(ctx, 1, 0x6a5a52, { contrast: 0.5, freq: 0.05, seed: 23, cracks: 1.0 });
   paintStone(ctx, 2, 0x45403f, { contrast: 0.42, freq: 0.04, seed: 37, cracks: 1.4 });
   paintStone(ctx, 3, 0x24211f, { contrast: 0.3, freq: 0.09, seed: 53, cracks: 0.2 });
@@ -190,15 +228,17 @@ export function createBlockAtlas() {
   emissiveMap.colorSpace = THREE.SRGBColorSpace;
 
   for (const t of [map, emissiveMap]) {
-    // Nearest magnification keeps the chunky, readable look. Mipmaps are off on
-    // purpose: an atlas this dense bleeds neighbouring tiles into each other at the
-    // lower levels, which showed up as ruby smeared across the gas pockets. Fog
-    // limits the view distance enough that the lost minification costs little.
+    // Nearest magnification keeps the chunky, readable look up close.
     t.magFilter = THREE.NearestFilter;
-    t.minFilter = THREE.LinearFilter;
+    t.minFilter = THREE.LinearMipmapLinearFilter;
+    // Hand-built mip chain, see buildTileMipmaps: automatic mipmapping averages
+    // across tile borders and smears ruby into the gas pockets at distance, while
+    // turning it off entirely makes the plaza shimmer at grazing angles.
     t.generateMipmaps = false;
+    t.mipmaps = buildTileMipmaps(t.image);
     t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
     t.anisotropy = 4;
+    t.needsUpdate = true;
   }
 
   /** UV rect for a tile, inset slightly so mip levels cannot sample a neighbour. */
