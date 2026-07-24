@@ -5,7 +5,23 @@ mining pod on Mars under contract to the financier **Mr. Natas**: dig, haul ore 
 surface, sell it, upgrade the pod, dig deeper. Something is waiting at the bottom.
 
 Built with [three.js](https://threejs.org/) and Vite. Every model and texture is
-generated procedurally in code — the repository contains no binary assets.
+generated procedurally in code — the repository contains no art assets, only the
+screenshots below.
+
+![The pod terminal, gauge cluster and LED ladders](docs/screenshots/terminal.png)
+
+## Screenshots
+
+Every one of these is the real game, captured by the headless harness driving the
+same code paths a player does. There is no HUD in any of them, because there is no
+HUD anywhere in the project.
+
+| | |
+| --- | --- |
+| ![A cold, dark cockpit with the standby lamp pulsing](docs/screenshots/cold-start.png) **Cold start.** The game opens with the pod switched off. A pulsing standby lamp throws amber light across the switch panel — the entire tutorial for how to begin. | ![The self-test menu on the pod terminal](docs/screenshots/boot-menu.png) **The main menu is a boot screen.** Throw master power, the terminal POSTs, and NEW EXCAVATION is a button on that CRT. Note the last line of the self-test. |
+| ![The left-hand switch bank](docs/screenshots/switch-bank.png) **The switch bank.** Master power, exterior lamps, drill clutch, cargo release and the map projector. You look at them and click them; the headlights are not a keybind. | ![The surface base seen through the canopy](docs/screenshots/base.png) **The claim.** Six installations ring the shaft mouth, each with a pad, a lit sign and a silhouette you can navigate by. |
+| ![Drilling downward with spoil flying from the bit](docs/screenshots/drilling.png) **Cutting.** The drill points wherever you look, and the sight is the boom's own optics. Ore is the only thing that glows down here. | ![The upgrade console at the fitting shop](docs/screenshots/workshop.png) **Docking is proximity.** Land on a pad and your own terminal becomes that vendor's console. No shop overlay, nothing to dismiss. |
+| ![The chase camera feed on the right console](docs/screenshots/chase-feed.png) **Hull optics.** Three cameras, one CRT, one rotary knob. It is the only way to ever see the machine you are flying. | ![The volumetric mine map projected above the dash](docs/screenshots/hologram.png) **The mine map.** A projector on the dash throws up the claim with every metre you have cut, your pod inside it, and a tether to the surface. |
 
 ## Running it
 
