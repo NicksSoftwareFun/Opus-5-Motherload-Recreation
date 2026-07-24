@@ -46,6 +46,34 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'drilling',
+    description: 'Cutting downward at 90 m, spoil flying off the bit.',
+    async run(page) {
+      await page.evaluate(() => {
+        const g = window.__MOTHERLOAD__;
+        g.teleport(90);
+        g.look(0.35, -0.75);
+        g.input.primaryDown = true;
+        g.simulate(6);
+      });
+      await page.waitForTimeout(500);
+      const dug = await page.evaluate(() => {
+        const g = window.__MOTHERLOAD__;
+        return {
+          blocks: g.pod.stats.blocksDrilled,
+          ore: g.pod.stats.oreMined,
+          fuel: Math.round(g.pod.fuel),
+          heat: Math.round(g.pod.heat),
+          cut: Number(g.drill.cutFraction.toFixed(2)),
+        };
+      });
+      console.log(`  drill check: ${JSON.stringify(dug)}`);
+    },
+    async after(page) {
+      await page.evaluate(() => { window.__MOTHERLOAD__.input.primaryDown = false; });
+    },
+  },
+  {
     name: 'deep',
     description: 'Deep strata at 200 m, where the valuable ore glows.',
     async run(page) {
@@ -131,6 +159,7 @@ async function main() {
       `shot: ${scenario.name}  avgFrame=${perf.avgFrameMs?.toFixed(1)}ms frames=${perf.frames}`,
     );
     results.push({ ...perf, name: scenario.name });
+    await scenario.after?.(page);
   }
 
   await writeFile(path.join(outDir, 'report.json'), JSON.stringify({ results, consoleErrors }, null, 2));
