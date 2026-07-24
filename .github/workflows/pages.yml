@@ -18,9 +18,14 @@ permissions:
   pages: write
   id-token: write
 
+# Never cancel a queued deployment. Both branch names above are pushed together
+# so they stay in sync, which means two runs enter this group at once — and with
+# cancel-in-progress the second one killed the first. The one it killed was the
+# run on the default branch, i.e. the only one allowed to publish, so a green
+# tick appeared and the site silently kept serving the previous commit.
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
