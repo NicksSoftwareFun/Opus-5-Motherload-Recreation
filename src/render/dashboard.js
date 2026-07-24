@@ -216,7 +216,7 @@ export function createDashboard({ cockpit, pod, session, interaction, actions, w
   cockpit.root.add(hologram.group);
 
   // --- Sensor fittings -----------------------------------------------------
-  const sensorRack = createSensorRack({ cockpit, world });
+  const sensorRack = createSensorRack({ cockpit, world, interaction });
   const providence = createProvidence({ cockpit, world });
 
   // --- Teletype ------------------------------------------------------------
@@ -229,7 +229,10 @@ export function createDashboard({ cockpit, pod, session, interaction, actions, w
   // an unreadable sliver; on the glass it faces the seat square-on and costs only a
   // corner of the view, which is the trade every windscreen note has ever made.
   const sticky = createStickyNote({ width: 0.205 });
-  sticky.group.position.set(-0.372, -0.052, -0.448);
+  // Low in the corner of the glass. The windscreen now runs down past the pilot's
+  // knees, and a note left at the old height ended up floating in the middle of the
+  // view rather than tucked out of the way at the bottom of it.
+  sticky.group.position.set(-0.395, -0.183, -0.448);
   cockpit.root.add(sticky.group);
 
   // --- Update --------------------------------------------------------------
@@ -261,7 +264,16 @@ export function createDashboard({ cockpit, pod, session, interaction, actions, w
       cargoBar.setValue(live ? pod.cargoFraction : 0);
       cutBar.setValue(live ? (state.drill?.cutFraction ?? 0) : 0);
 
-      depthReadout.setText(live ? Math.max(0, state.depth).toFixed(0) : '');
+      // One instrument, two jobs. Airborne it is an altimeter reading height above
+      // whatever is under you; in the rock it goes back to reading depth. The sign
+      // is the tell — a leading + means there is air below the skids.
+      if (live && state.agl !== null && state.agl !== undefined) {
+        depthReadout.setLabel('AGL M');
+        depthReadout.setText(`+${state.agl.toFixed(1)}`);
+      } else {
+        depthReadout.setLabel('DEPTH M');
+        depthReadout.setText(live ? Math.max(0, state.depth).toFixed(0) : '');
+      }
       cashReadout.setText(live ? credits(pod.cash) : '');
 
       const flashing = (on, warn) => (!live ? 0 : warn ? 2 : on ? 1 : 0);

@@ -54,7 +54,10 @@ export const POD = {
 };
 
 export const RENDER = {
-  FOV: 72,
+  // Wide, because a cockpit game is mostly about how much of the cabin you can see
+  // at once. Anything tighter and the side consoles fall off the edges of the frame
+  // and the machine stops feeling like a room you are sitting in.
+  FOV: 82,
   NEAR: 0.02,
   FAR: 900,
   /** Fog density underground vs. at the surface — the mine should close in on you. */

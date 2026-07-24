@@ -51,6 +51,19 @@ function bracketTexture() {
   return canvas;
 }
 
+/**
+ * Is this object actually on screen?
+ *
+ * Raycasting does not care about `visible` — an unfitted instrument still answers
+ * rays from inside its own hidden bay — so anything registered that can be hidden
+ * has to be filtered here, or the pilot ends up clicking hardware they have not
+ * bought yet.
+ */
+function displayed(object) {
+  for (let o = object; o; o = o.parent) if (!o.visible) return false;
+  return true;
+}
+
 export function createInteraction(camera, { audio = null } = {}) {
   const raycaster = new THREE.Raycaster();
   const center = new THREE.Vector2(0, 0);
@@ -112,8 +125,8 @@ export function createInteraction(camera, { audio = null } = {}) {
       hovered = null;
       hoveredRegion = null;
 
-      if (hits.length) {
-        const hit = hits[0];
+      const hit = hits.find((h) => displayed(h.object));
+      if (hit) {
         const entry = targets.find((t) => t.mesh === hit.object);
         if (entry) {
           if (entry.kind === 'screen' && hit.uv) {

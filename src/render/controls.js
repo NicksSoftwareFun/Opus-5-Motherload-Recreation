@@ -68,30 +68,54 @@ export function toggleSwitch({
   group.add(collar);
 
   // The lever pivots at the collar, so it swings rather than slides.
+  //
+  // It swings in front of the panel, never through it. The first version rotated the
+  // lever about the panel plane, which meant one of its two positions pointed
+  // *backwards* — the stick buried itself in its own mounting plate and all you could
+  // see was the collar end-on. A real toggle stands proud of the panel in both
+  // positions and leans up or down; that is what UP_POSE and DOWN_POSE are.
   const pivot = new THREE.Group();
-  pivot.position.z = 0.010;
+  pivot.position.z = 0.013;
   group.add(pivot);
+  // Local +Y is along the stick. Rotating the pivot by π/2 lays that along +Z, i.e.
+  // straight out at the pilot; TILT then leans it off that axis by about 49°.
+  const TILT = 0.85;
+  const UP_POSE = Math.PI / 2 - TILT;
+  const DOWN_POSE = Math.PI / 2 + TILT;
+
   const lever = new THREE.Mesh(new THREE.CapsuleGeometry(size * 0.11, size * 0.42, 3, 6), leverMat);
-  lever.position.y = size * 0.26;
+  // Seated *on* the pivot rather than straddling it, so nothing hangs below the
+  // hinge to dip into the plate as it swings.
+  lever.position.y = size * 0.32;
   pivot.add(lever);
   const tipMesh = new THREE.Mesh(new THREE.SphereGeometry(size * 0.15, 8, 6), leverRed);
-  tipMesh.position.y = size * 0.50;
+  tipMesh.position.y = size * 0.56;
   pivot.add(tipMesh);
 
   const legend = legendPlate(label, size * 1.9, size * 0.62, sub);
   legend.position.set(0, -size * 0.78, 0.001);
   group.add(legend);
 
-  // Generous invisible target in front of the switch.
+  // Generous invisible target, covering the legend plate as well as the switch.
+  //
+  // The label is the biggest, most obvious thing on the control and it is what a
+  // player naturally puts the crosshair on, so it had better be clickable. Aiming at
+  // a 6 mm stick of metal is not an interaction, it is an eye test.
   const hit = new THREE.Mesh(
-    new THREE.PlaneGeometry(size * 1.7, size * 1.5),
-    new THREE.MeshBasicMaterial({ visible: false }),
+    new THREE.PlaneGeometry(size * 2.05, size * 1.8),
+    // Double-sided: these panels are raked steeply towards the seat, and a
+    // front-only target silently stops answering as you lean past its plane.
+    new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide }),
   );
-  hit.position.z = 0.03;
+  // Sat almost on the panel face rather than floating in front of it. Nothing else
+  // on the switch is a raycast target, so there is nothing to clear — and a target
+  // standing off the panel drifts away from the thing it represents as soon as you
+  // look at it from an angle, which is its own kind of unreliable.
+  hit.position.set(0, -size * 0.2, 0.02);
   group.add(hit);
 
   let state = on;
-  let angle = state ? -0.62 : 0.62;
+  let angle = state ? UP_POSE : DOWN_POSE;
   pivot.rotation.x = angle;
 
   const api = {
@@ -111,7 +135,7 @@ export function toggleSwitch({
     },
     update(dt) {
       // Overshoot slightly and settle: switches snap into their detent.
-      const target = state ? -0.62 : 0.62;
+      const target = state ? UP_POSE : DOWN_POSE;
       angle += (target - angle) * Math.min(1, dt * 22);
       pivot.rotation.x = angle;
       tipMesh.material = state ? leverRed : leverMat;
@@ -139,12 +163,23 @@ export function guardedSwitch({ label = 'ARM', sub = '', size = 0.06, onChange =
   const group = new THREE.Group();
   group.add(inner.group);
 
+  // The cover has to hinge *clear* of the lever, which now stands proud of the panel
+  // in both positions rather than lying back into it. A guard flush to the plate
+  // would close straight through the stick it is supposed to be protecting.
   const coverPivot = new THREE.Group();
-  coverPivot.position.set(0, size * 0.55, 0.012);
+  coverPivot.position.set(0, size * 0.62, 0.013 + size * 0.62);
   group.add(coverPivot);
-  const cover = new THREE.Mesh(new THREE.BoxGeometry(size * 1.0, size * 1.1, 0.006), guardMat);
-  cover.position.y = -size * 0.55;
+  const cover = new THREE.Mesh(new THREE.BoxGeometry(size * 1.1, size * 1.25, 0.005), guardMat);
+  cover.position.y = -size * 0.62;
   coverPivot.add(cover);
+  // Side cheeks, so it reads as a cage over the switch rather than a floating pane.
+  for (const s of [-1, 1]) {
+    const cheek = new THREE.Mesh(
+      new THREE.BoxGeometry(0.004, size * 1.25, size * 0.62), guardMat,
+    );
+    cheek.position.set(s * size * 0.55, -size * 0.62, -size * 0.31);
+    coverPivot.add(cheek);
+  }
 
   let open = false;
   let coverAngle = 0;
@@ -256,11 +291,13 @@ export function rotarySelector({
   knobLegend.position.set(0, -size * 1.45, 0.001);
   group.add(knobLegend);
 
+  // As with the toggles: the target covers the legend ring and the plate, not just
+  // the knob, and answers from either side because the console is raked.
   const hit = new THREE.Mesh(
-    new THREE.PlaneGeometry(size * 2.2, size * 2.2),
-    new THREE.MeshBasicMaterial({ visible: false }),
+    new THREE.PlaneGeometry(size * 2.6, size * 3.0),
+    new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide }),
   );
-  hit.position.z = 0.035;
+  hit.position.set(0, -size * 0.4, 0.025);
   group.add(hit);
 
   let current = index;

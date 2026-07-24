@@ -43,10 +43,17 @@ function outsideClaim(x, z) {
  * Advance one body by dt.
  *
  * `body` is mutated in place: `{ position, velocity, onGround, impactSpeed }`.
- * `impactSpeed` is set to the vertical speed at the moment of a landing, and read
- * by the damage model — everything about fall damage lives on the caller's side.
+ * `impactSpeed` is the largest speed any axis lost to a collision this step — floor,
+ * wall, ceiling or building alike — and is read by the damage model. Everything
+ * about what an impact *costs* lives on the caller's side.
+ *
+ * `solids` is a list of world-space boxes `{x, z, hx, hz, top}` standing on the
+ * ground: the surface installations, which are meshes rather than voxels and would
+ * otherwise be scenery you fly straight through.
  */
-export function integrate(world, body, dt, { terrainHeightAt = null, gravityScale = 1 } = {}) {
+export function integrate(world, body, dt, {
+  terrainHeightAt = null, gravityScale = 1, solids = null,
+} = {}) {
   const pos = body.position;
   const vel = body.velocity;
   const hx = PHYSICS.POD_HALF_W;
@@ -84,6 +91,10 @@ export function integrate(world, body, dt, { terrainHeightAt = null, gravityScal
     if (hit) {
       pos.x = forward ? ix - hx - EPS : ix + 1 + hx + EPS;
       body.hitWall = Math.abs(vel.x) > 4;
+      // Every axis reports its impact, not just the floor. Flying a loaded pod into
+      // a wall at thirty metres a second and walking away from it because the rock
+      // happened to be vertical is not a rule anyone would defend out loud.
+      body.impactSpeed = Math.max(body.impactSpeed, Math.abs(vel.x));
       vel.x = 0;
     }
   }
@@ -106,6 +117,7 @@ export function integrate(world, body, dt, { terrainHeightAt = null, gravityScal
     if (hit) {
       pos.z = forward ? iz - hz - EPS : iz + 1 + hz + EPS;
       body.hitWall = body.hitWall || Math.abs(vel.z) > 4;
+      body.impactSpeed = Math.max(body.impactSpeed, Math.abs(vel.z));
       vel.z = 0;
     }
   }
@@ -129,6 +141,9 @@ export function integrate(world, body, dt, { terrainHeightAt = null, gravityScal
     if (hit) {
       if (rising) {
         pos.y = iy - hy - EPS;
+        // Hitting the roof of a chamber counts too — that is the same tonnage
+        // arriving at the same speed, only upside down.
+        body.impactSpeed = Math.max(body.impactSpeed, vel.y);
       } else {
         pos.y = iy + 1 + hy + EPS;
         body.impactSpeed = -vel.y;
@@ -149,6 +164,41 @@ export function integrate(world, body, dt, { terrainHeightAt = null, gravityScal
     }
   }
 
+  // Surface installations. Resolved after the voxel passes and along whichever axis
+  // is least penetrated, which for a box you have just flown into is the face you
+  // hit. Landing on a roof is a landing; clipping a tank at speed is a crash.
+  if (solids) {
+    for (const s of solids) {
+      if (pos.y - hy >= s.top) continue;
+      const dx = pos.x - s.x;
+      const dz = pos.z - s.z;
+      const px = s.hx + hx - Math.abs(dx);
+      const pz = s.hz + hz - Math.abs(dz);
+      if (px <= 0 || pz <= 0) continue;
+      const py = s.top + hy - (pos.y - hy) - hy;    // overlap up through the roof
+      if (py <= 0) continue;
+
+      if (py <= px && py <= pz) {
+        pos.y = s.top + hy + EPS;
+        if (vel.y < 0) {
+          body.impactSpeed = Math.max(body.impactSpeed, -vel.y);
+          vel.y = 0;
+        }
+        body.onGround = true;
+      } else if (px <= pz) {
+        pos.x += dx >= 0 ? px : -px;
+        body.impactSpeed = Math.max(body.impactSpeed, Math.abs(vel.x));
+        body.hitWall = body.hitWall || Math.abs(vel.x) > 4;
+        vel.x = 0;
+      } else {
+        pos.z += dz >= 0 ? pz : -pz;
+        body.impactSpeed = Math.max(body.impactSpeed, Math.abs(vel.z));
+        body.hitWall = body.hitWall || Math.abs(vel.z) > 4;
+        vel.z = 0;
+      }
+    }
+  }
+
   // Standing check: a shallow probe under the box, so resting on a ledge counts even
   // on the frames where vertical velocity is exactly zero.
   if (!body.onGround && Math.abs(vel.y) < 0.6) {
@@ -160,3 +210,27 @@ export function integrate(world, body, dt, { terrainHeightAt = null, gravityScal
 
 /** Depth below the Martian surface, in metres. Negative above ground. */
 export const depthOf = (position) => -position.y;
+
+/**
+ * Height of the ground directly under a point, or null if there is none within
+ * `reach`.
+ *
+ * Depth and altitude are not the same instrument. Below ground the useful number is
+ * how far down you have cut; above it, it is how far you would fall — and over a
+ * mesa or the lip of your own shaft those differ by a lot. This walks down the
+ * column looking for the first solid voxel, then falls back to the terrain surface
+ * outside the claim where there is no voxel data at all.
+ */
+export function groundBelow(world, x, y, z, { terrainHeightAt = null, reach = 60 } = {}) {
+  const ix = Math.floor(x);
+  const iz = Math.floor(z);
+  const start = Math.floor(y);
+  for (let iy = start; iy > start - reach; iy--) {
+    if (solidAtCell(world, ix, iy, iz)) return iy + 1;
+  }
+  if (terrainHeightAt && outsideClaim(x, z)) {
+    const h = terrainHeightAt(x, z);
+    return y - h < reach ? h : null;
+  }
+  return null;
+}

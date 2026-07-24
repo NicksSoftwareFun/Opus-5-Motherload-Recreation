@@ -60,6 +60,10 @@ thing you need to be told.
 
 The same list is on a sticky note taped to the inside of the canopy, bottom left.
 
+Yaw has mass: `Q` and `E` spool the pod up and it coasts down off the keys, the same
+as the translation thrusters. The altimeter reads **AGL +N.N** above ground and depth
+below it.
+
 There are no other keybinds, because everything else is a switch you throw or a button
 on a screen. The exterior lamps, the drill clutch, the map projector and the cargo
 release are all on the left rail. The camera feed selector is a rotary knob on the
@@ -105,7 +109,12 @@ against the canopy frame — and never turns the pod.
   The document body contains a canvas and nothing else, and the test harness asserts
   it on every run.
 - **Per-module damage.** A bad landing does not cost you thirty points, it costs you a
-  headlight, or half your thrust, with the surface two hundred metres up.
+  headlight, or half your thrust, with the surface two hundred metres up. Walls,
+  ceilings and the surface installations all count — there is no angle at which the
+  rock is free to hit.
+- **A cockpit you can see out of.** Helicopter glazing: a deep windscreen, chin panels
+  under the instrument panel that carry on down past your feet, and a port in the roof
+  for looking back up the shaft.
 - **The Providence Engine.** The top sensor tier costs 666,000 credits, is sold without
   a specification, is armed from under a safety cover, and shows you every ore seam and
   magma pocket within forty metres straight through solid rock. It bills you

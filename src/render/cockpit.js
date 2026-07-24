@@ -12,11 +12,19 @@ import { panelTexture, hazardTexture, toTexture } from './texlib.js';
  *
  * Layout, in metres, with the pilot's eye at the origin looking down -Z:
  *
+ *      skylight        y +0.60           <- aperture in the roof, ahead of the panel
  *      overhead panel  y +0.44           <- depth & cash readout, warning lamps
  *      header          y +0.30
- *      ---- canopy aperture: x +/-0.50, y -0.17..+0.24, at z -0.45 ----
- *      dashboard       y -0.30, tilted   <- gauges, terminal, switch bank
+ *      ---- canopy aperture: x +/-0.50, y -0.30..+0.24, at z -0.45 ----
+ *      dashboard       y -0.36, tilted   <- gauges, terminal, switch bank
+ *      ---- nose glazing, raked forward and down to the footwell ----
+ *      ---- floor window: x +/-0.44, z -0.58..-0.24 ----
  *      side consoles   x +/-0.52         <- monitor feed, breakers
+ *
+ * The glazing is deliberately helicopter-like: a deep windscreen, chin panels under
+ * it that carry on down past your feet, and a small port in the roof. A machine that
+ * spends its life descending a vertical shaft needs to see down far more than it
+ * needs to see ahead, and a pilot who cannot see the hole cannot fly into it.
  *
  * Everything the player reads is mounted on one of those surfaces. Nothing is drawn
  * in screen space.
@@ -77,6 +85,10 @@ export function createCockpit() {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(RENDER.FOV, 1, 0.008, 8);
   const root = new THREE.Group();
+  // The pilot sits high. Dropping the whole cabin relative to the eye puts more of
+  // the shaft under you in the windscreen without touching the world camera, which
+  // stays where the pod is — the cabin is only ever a frame around the view.
+  root.position.y = -0.075;
   scene.add(root);
   // The camera is part of the graph so things parented to it (the drill boom, the
   // sight) are drawn. The cabin is fixed to the pod; the camera is the pilot's head
@@ -90,9 +102,18 @@ export function createCockpit() {
   shell.name = 'shell';
   root.add(shell);
 
-  shell.add(box(1.42, 0.05, 1.18, mat.hullDark, { y: -0.66, z: -0.03, name: 'floor' }));
+  // The floor stops short of the nose: everything forward of z -0.24 is glazed.
+  shell.add(box(1.42, 0.05, 0.80, mat.hullDark, { y: -0.66, z: 0.16, name: 'floor' }));
   shell.add(box(1.42, 1.20, 0.06, mat.hullDark, { y: -0.05, z: 0.46, name: 'bulkhead' }));
-  shell.add(box(1.42, 0.06, 1.18, mat.hullDark, { y: 0.60, z: -0.03, name: 'ceiling' }));
+
+  // Ceiling, built as a surround rather than a slab so there is a hole in it. The
+  // skylight sits forward of the overhead panel, where a pilot's natural glance up
+  // actually lands.
+  shell.add(box(1.42, 0.06, 0.52, mat.hullDark, { y: 0.60, z: -0.360, name: 'ceilingNose' }));
+  shell.add(box(1.42, 0.06, 0.36, mat.hullDark, { y: 0.60, z: 0.380, name: 'ceiling' }));
+  for (const side of [-1, 1]) {
+    shell.add(box(0.51, 0.06, 0.30, mat.hullDark, { x: side * 0.455, y: 0.60, z: 0.05 }));
+  }
 
   for (const side of [-1, 1]) {
     shell.add(box(0.06, 1.22, 1.10, mat.hull, { x: side * 0.69, y: -0.03, z: -0.02, name: 'wall' }));
@@ -114,12 +135,48 @@ export function createCockpit() {
 
   canopy.add(box(1.46, 0.17, 0.13, mat.frame, { y: 0.325, z: -0.44, name: 'header' }));
   for (const side of [-1, 1]) {
-    canopy.add(box(0.14, 0.62, 0.12, mat.frame, { x: side * 0.575, y: 0.03, z: -0.44, rz: side * 0.05 }));
+    // Full-depth A-pillars: the windscreen now runs down past the pilot's knees.
+    canopy.add(box(0.14, 0.75, 0.12, mat.frame, { x: side * 0.575, y: -0.035, z: -0.44, rz: side * 0.05 }));
     // Corner gussets, the small triangular plates every real machine has.
     canopy.add(box(0.10, 0.10, 0.10, mat.frame, { x: side * 0.50, y: 0.22, z: -0.44, rz: side * 0.78 }));
   }
-  // Hazard tape along the sill: the one bright thing in the pilot's lower view.
-  canopy.add(box(1.40, 0.035, 0.08, mat.hazard, { y: -0.183, z: -0.432, name: 'sillTape' }));
+  // Hazard tape along the sill: the one bright thing in the pilot's lower view, and
+  // the line where the windscreen hands over to the chin glass.
+  canopy.add(box(1.40, 0.035, 0.08, mat.hazard, { y: -0.300, z: -0.432, name: 'sillTape' }));
+
+  // --- Chin glazing --------------------------------------------------------
+  // Two panels: a raked nose pane carrying on down from the sill, and a flat window
+  // in the floor between the pilot's feet. Together they cover everything from the
+  // windscreen sill to straight down, which is the arc a shaft lives in.
+  const chin = new THREE.Group();
+  chin.name = 'chin';
+  root.add(chin);
+
+  // Nose pane: from the sill at (y -0.30, z -0.44) down and forward to the floor
+  // line at (y -0.60, z -0.575). RAKE is the rotation that puts the pane's own +Y
+  // along that run.
+  const NOSE_LEN = Math.hypot(0.30, 0.135);
+  const RAKE = Math.atan2(0.135, 0.30);
+  const NOSE_MID = { y: -0.45, z: -0.5075 };
+
+  for (const side of [-1, 1]) {
+    // Side rails following the rake, and the centre post that splits the pane.
+    chin.add(box(0.055, NOSE_LEN, 0.075, mat.frame, {
+      x: side * 0.475, y: NOSE_MID.y, z: NOSE_MID.z, rx: RAKE,
+    }));
+  }
+  chin.add(box(0.045, NOSE_LEN, 0.065, mat.frame, { y: NOSE_MID.y, z: NOSE_MID.z, rx: RAKE }));
+  // Knuckle where the nose meets the floor window.
+  chin.add(box(1.05, 0.055, 0.075, mat.frame, { y: -0.612, z: -0.578 }));
+
+  // Floor window surround.
+  for (const side of [-1, 1]) {
+    chin.add(box(0.055, 0.05, 0.35, mat.frame, { x: side * 0.470, y: -0.655, z: -0.405 }));
+    // Toe bars, so there is somewhere to put your boots that is not the glass.
+    chin.add(box(0.22, 0.028, 0.05, mat.hazard, { x: side * 0.285, y: -0.628, z: -0.300 }));
+  }
+  chin.add(box(0.045, 0.05, 0.35, mat.frame, { y: -0.655, z: -0.405 }));
+  chin.add(box(1.05, 0.05, 0.06, mat.frame, { y: -0.655, z: -0.215 }));
 
   // --- Dashboard -----------------------------------------------------------
   // Tilted back toward the pilot so the whole surface is readable with a glance
@@ -129,14 +186,26 @@ export function createCockpit() {
   // Placed so the terminal centre sits ~35 degrees below the horizon: far enough
   // down to be out of the way of the rock, close enough that consulting it is a
   // glance rather than a full head drop.
-  dash.position.set(0, -0.245, -0.345);
+  // Sat lower and further back than the glazing line, so the instrument panel is
+  // something inside the cabin rather than something hanging in the windscreen. The
+  // chin glass starts where the dash ends.
+  // Forward as well as down. The panel is the only thing between the pilot and the
+  // chin glass, and every centimetre it moves toward the nose is another few degrees
+  // of ground visible under its lower edge — which is the entire point of cutting
+  // the windows in the first place.
+  dash.position.set(0, -0.305, -0.370);
   dash.rotation.x = -0.80;
   root.add(dash);
   dash.add(box(1.36, 0.36, 0.05, mat.hull, { name: 'dashPanel' }));
   dash.add(box(1.40, 0.04, 0.075, mat.frame, { y: -0.19, name: 'dashLip' }));
 
-  // Knee bolster below the dash, closing the gap down to the floor.
-  root.add(box(1.30, 0.30, 0.05, mat.hullDark, { y: -0.52, z: -0.12, rx: -0.30 }));
+  // Knee bolsters below the dash. Outboard only: this used to be one panel spanning
+  // the cabin, closing the gap between the dash and the floor, and it turned out to
+  // be sitting in exactly the line of sight the chin glass was cut for. Split in two,
+  // it still covers the pilot's knees and leaves the middle open all the way down.
+  for (const side of [-1, 1]) {
+    root.add(box(0.34, 0.30, 0.05, mat.hullDark, { x: side * 0.48, y: -0.52, z: -0.12, rx: -0.30 }));
+  }
 
   // --- Overhead panel ------------------------------------------------------
   const overhead = new THREE.Group();
@@ -179,11 +248,15 @@ export function createCockpit() {
   }
 
   // --- Teletype bay --------------------------------------------------------
-  // At the pilot's right hip, angled up toward the seat. Mr Natas's traffic lands
-  // here as paper, so the story lives in the cabin rather than over the top of it.
+  // Behind the pilot's right hip, turned to face the seat over the shoulder.
+  //
+  // It used to sit further forward and square-on, where the paper feed stood up
+  // directly in front of the camera monitor — the printer was reading its own
+  // transmissions to the CRT. Set aft of the console and rotated toward the
+  // starboard wall, the paper is a glance to the right instead of an obstruction.
   const teletypeBay = new THREE.Group();
-  teletypeBay.position.set(0.415, -0.415, 0.115);
-  teletypeBay.rotation.set(-0.10, -0.85, 0.10);
+  teletypeBay.position.set(0.455, -0.425, 0.255);
+  teletypeBay.rotation.set(-0.10, -1.24, 0.12);
   root.add(teletypeBay);
 
   // --- Seat ----------------------------------------------------------------
@@ -204,7 +277,11 @@ export function createCockpit() {
   // put it inside the cabin with the pilot, floating through the dashboard, because
   // that pass clears the depth buffer. In the world it is depth-tested against rock
   // like everything else, and the canopy frame correctly hides its root.
-  drill.position.set(0, -0.14, -0.50);
+  //
+  // The group origin *is* the mounting point on the nose. main.js parks a rig there
+  // and turns it toward the aim, so everything here is measured forward from the
+  // hull rather than out from the pilot's eye.
+  drill.position.set(0, 0, 0);
 
   // Two struts running out from the sill to a housing ahead of the canopy. A drill
   // aimed straight down the view axis is otherwise just a circle; the struts are
@@ -264,22 +341,51 @@ export function createCockpit() {
   // --- Canopy glass --------------------------------------------------------
   // Barely there, but it catches the cabin lights and puts a surface between the
   // pilot and the mine, which the view badly needs at the surface.
-  const glass = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.06, 0.44),
-    new THREE.MeshPhysicalMaterial({
-      color: 0xbfd4d0,
-      transparent: true,
-      opacity: 0.055,
-      roughness: 0.12,
-      metalness: 0,
-      transmission: 0,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    }),
-  );
-  glass.position.set(0, 0.035, -0.455);
+  const glassMat = new THREE.MeshPhysicalMaterial({
+    color: 0xbfd4d0,
+    transparent: true,
+    opacity: 0.055,
+    roughness: 0.12,
+    metalness: 0,
+    transmission: 0,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(1.06, 0.54), glassMat);
+  glass.position.set(0, -0.030, -0.455);
   glass.name = 'glass';
   root.add(glass);
+
+  // Chin panes, on the same rake as their frames, and the floor window flat between
+  // the toe bars. Both are the same barely-there glass as the windscreen; what makes
+  // them read as windows rather than holes is the frame around them.
+  const noseGlass = new THREE.Mesh(new THREE.PlaneGeometry(0.90, NOSE_LEN), glassMat);
+  noseGlass.position.set(0, NOSE_MID.y, NOSE_MID.z + 0.008);
+  noseGlass.rotation.x = RAKE;
+  noseGlass.name = 'noseGlass';
+  root.add(noseGlass);
+
+  const floorGlass = new THREE.Mesh(new THREE.PlaneGeometry(0.90, 0.34), glassMat);
+  floorGlass.position.set(0, -0.648, -0.405);
+  floorGlass.rotation.x = -Math.PI / 2;
+  floorGlass.name = 'floorGlass';
+  root.add(floorGlass);
+
+  // --- Skylight ------------------------------------------------------------
+  // A port in the roof, framed like the rest. Looking up the shaft you came down is
+  // the only way to judge how far there is left to climb, and on the surface it is
+  // where the sun is.
+  const skyGlass = new THREE.Mesh(new THREE.PlaneGeometry(0.38, 0.28), glassMat);
+  skyGlass.position.set(0, 0.588, 0.05);
+  skyGlass.rotation.x = Math.PI / 2;
+  skyGlass.name = 'skyGlass';
+  root.add(skyGlass);
+
+  for (const side of [-1, 1]) {
+    shell.add(box(0.045, 0.05, 0.34, mat.frame, { x: side * 0.212, y: 0.585, z: 0.05 }));
+    shell.add(box(0.47, 0.05, 0.045, mat.frame, { y: 0.585, z: 0.05 + side * 0.168 }));
+  }
 
   // --- Cabin lighting ------------------------------------------------------
   const hemi = new THREE.HemisphereLight(0x6a6b68, 0x100e0b, 0.5);
@@ -342,12 +448,12 @@ export function createCockpit() {
         spinner.rotation.z = state.drillSpin;
         // Bit chatter: the whole boom judders while it is cutting.
         drill.position.x = (Math.random() - 0.5) * 0.006;
-        drill.position.y = -0.14 + (Math.random() - 0.5) * 0.006;
+        drill.position.y = (Math.random() - 0.5) * 0.006;
       } else {
         state.drillSpin += dt * 1.2;
         spinner.rotation.z = state.drillSpin;
         drill.position.x *= 0.85;
-        drill.position.y += (-0.14 - drill.position.y) * 0.2;
+        drill.position.y *= 0.85;
       }
 
       // The cabin lags the pod a little under acceleration — suspension travel.

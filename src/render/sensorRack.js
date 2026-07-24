@@ -18,6 +18,78 @@ import { scanOre, columnBelow, slice, bitReading } from '../player/sensorData.js
 
 const RACK_Z = 0.026;
 
+/**
+ * Every instrument carries its own manual.
+ *
+ * These things are bought one at a time over a long run, and an unlabelled scope
+ * full of blips is a puzzle rather than a tool. A "?" in the corner of the tube
+ * turns the display over to a page explaining what it is showing you; the same box
+ * becomes an "X" and turns it back. No pausing, no menu — the instrument simply
+ * shows a different page for a moment, which is what an instrument with a mode
+ * button does.
+ */
+function withHelp(screen, { title, lines }, livePage) {
+  let open = false;
+
+  const drawHelp = (ctx, api) => {
+    const P = api.P;
+    api.clear();
+    const narrow = api.W < 160;
+    const size = narrow ? 10 : 13;
+    const pad = narrow ? 5 : 10;
+    let y = narrow ? 14 : 20;
+
+    if (!narrow) {
+      api.title(title);
+      y = 44;
+    } else {
+      api.text(title, pad, y, { size: 10, bold: true, color: P.hot });
+      y += 16;
+    }
+
+    // Wrapped by measurement rather than by guessing a column count: these tubes
+    // range from 96 to 384 pixels wide and share this one page.
+    ctx.font = `${size}px "Courier New", ui-monospace, monospace`;
+    const limit = api.W - pad * 2 - (narrow ? 0 : 26);
+    for (const para of lines) {
+      let line = '';
+      for (const word of para.split(' ')) {
+        const next = line ? `${line} ${word}` : word;
+        if (ctx.measureText(next).width > limit && line) {
+          api.text(line, pad, y, { size, color: P.ink });
+          y += size + 4;
+          line = word;
+        } else {
+          line = next;
+        }
+      }
+      if (line) {
+        api.text(line, pad, y, { size, color: P.ink });
+        y += size + 4;
+      }
+      y += Math.round(size * 0.5);
+      if (y > api.H - size) break;
+    }
+  };
+
+  screen.setPage((ctx, api, state) => {
+    if (open) drawHelp(ctx, api);
+    else livePage(ctx, api, state);
+
+    // Drawn last so it sits over whatever the page put underneath it, and so its hit
+    // region is the last one registered — regionAt searches backwards, so the box
+    // always wins against anything it overlaps.
+    const w = api.W < 160 ? 16 : 20;
+    api.button(api.W - w - 4, 4, w, 16, open ? 'X' : '?', {
+      id: 'help',
+      onClick: () => {
+        open = !open;
+        screen.dirty = true;
+      },
+    });
+  });
+}
+
 /** Ore tier -> scope colour, so a return's worth is legible before you dig it. */
 function oreInk(id) {
   const v = BLOCKS[id].value;
@@ -27,7 +99,7 @@ function oreInk(id) {
   return '#ff9a5a';
 }
 
-export function createSensorRack({ cockpit, world }) {
+export function createSensorRack({ cockpit, world, interaction = null }) {
   const { dash, racks } = cockpit.parts;
   const modules = {};
 
@@ -36,18 +108,31 @@ export function createSensorRack({ cockpit, world }) {
     width: 0.30, height: 0.052, px: 384, py: 66, palette: PHOSPHOR.amber, fps: 10,
     name: 'densitometer',
   });
-  densit.mesh.position.set(0, 0.148, 0.028);
+  // Depths matter here. The bezel's front face and the screen used to sit on exactly
+  // the same plane, which is a coin toss the depth buffer resolves per pixel — the
+  // strip crawled with dither. The bezel now sits back inside the dash panel like the
+  // terminal's does, with the screen proud of both, and the whole fitting is short
+  // enough to stay inside the panel's top edge instead of hanging over it.
+  densit.mesh.position.set(0, 0.146, 0.030);
   const densitBezel = new THREE.Mesh(
-    new THREE.BoxGeometry(0.335, 0.078, 0.016),
+    new THREE.BoxGeometry(0.335, 0.068, 0.020),
     new THREE.MeshStandardMaterial({ color: 0x23251f, roughness: 0.8, metalness: 0.3 }),
   );
-  densitBezel.position.set(0, 0.148, 0.020);
+  densitBezel.position.set(0, 0.146, 0.013);
   const densitGroup = new THREE.Group();
   densitGroup.add(densit.mesh, densitBezel);
   dash.add(densitGroup);
   modules.densitometer = { group: densitGroup, screens: [densit] };
 
-  densit.setPage((ctx, api, state) => {
+  withHelp(densit, {
+    title: 'MK-I DENSITOMETER',
+    lines: [
+      'Reads the block the bit is touching, before you commit fuel to it.',
+      'NAME is the assay. H is hardness: how long the cut takes at your current drill rating. ETA is that time, in seconds.',
+      'A value in credits on the right means it is ore and worth the fuel.',
+      'UNCUTTABLE means bedrock, or something the drill will not touch.',
+    ],
+  }, (ctx, api, state) => {
     const P = api.P;
     api.clear();
     const r = state.bit;
@@ -78,12 +163,16 @@ export function createSensorRack({ cockpit, world }) {
 
   // --- Chirp Sonar: PPI scope, port rack ----------------------------------
   const sonar = new Screen({
-    width: 0.235, height: 0.235, px: 288, py: 288, palette: PHOSPHOR.green, fps: 20,
+    width: 0.210, height: 0.210, px: 288, py: 288, palette: PHOSPHOR.green, fps: 20,
     name: 'sonar',
   });
-  sonar.mesh.position.set(0, 0.095, RACK_Z);
+  // The left rack holds two instruments, so both have to fit inside its 0.32 x 0.48
+  // panel and keep out of each other's way: the sonar scope in the upper half, the
+  // strata core down the lower left. They are coplanar, and two coplanar screens
+  // that overlap fight for the same pixels.
+  sonar.mesh.position.set(0, 0.115, RACK_Z);
   const sonarPlate = nameplate({ text: 'CHIRP SONAR', width: 0.20, height: 0.030 });
-  sonarPlate.position.set(0, -0.043, RACK_Z);
+  sonarPlate.position.set(0, -0.028, RACK_Z);
   const sonarGroup = new THREE.Group();
   sonarGroup.add(sonar.mesh, sonarPlate);
   racks.left.add(sonarGroup);
@@ -94,7 +183,15 @@ export function createSensorRack({ cockpit, world }) {
   let sonarTimer = 0;
   const RANGE = 18;
 
-  sonar.setPage((ctx, api, state) => {
+  withHelp(sonar, {
+    title: 'CHIRP SONAR',
+    lines: [
+      'A pulse into the rock and a listen for what comes back. Ore is denser than country rock and answers louder.',
+      'The scope is plan view, pod at the centre, nose to the top. It rotates with you.',
+      'Only returns within five metres above or below are painted, so you are reading a slab and not the whole sphere.',
+      'Blip colour is worth: orange cheap, yellow better, green good, pink very good indeed.',
+    ],
+  }, (ctx, api, state) => {
     const P = api.P;
     api.clear();
     const cx = api.W / 2;
@@ -152,12 +249,14 @@ export function createSensorRack({ cockpit, world }) {
 
   // --- Strata Profiler: core sample column, port rack ---------------------
   const profiler = new Screen({
-    width: 0.075, height: 0.30, px: 96, py: 384, palette: PHOSPHOR.amber, fps: 6,
+    width: 0.070, height: 0.19, px: 96, py: 384, palette: PHOSPHOR.amber, fps: 6,
     name: 'profiler',
   });
-  profiler.mesh.position.set(-0.105, -0.145, RACK_Z);
+  // Was 0.30 tall at y -0.145, which put its lower third out through the bottom of
+  // the rack and its top corner into the sonar scope.
+  profiler.mesh.position.set(-0.092, -0.125, RACK_Z);
   const profilerPlate = nameplate({ text: 'STRATA', width: 0.10, height: 0.026 });
-  profilerPlate.position.set(0.04, -0.145, RACK_Z);
+  profilerPlate.position.set(0.045, -0.125, RACK_Z);
   profilerPlate.rotation.z = -Math.PI / 2;
   const profilerGroup = new THREE.Group();
   profilerGroup.add(profiler.mesh, profilerPlate);
@@ -167,7 +266,15 @@ export function createSensorRack({ cockpit, world }) {
   const CORE_DEPTH = 26;
   let core = [];
 
-  profiler.setPage((ctx, api, state) => {
+  withHelp(profiler, {
+    title: 'STRATA PROFILER',
+    lines: [
+      'A core sample of the column directly beneath the pod.',
+      'Top of the strip is the floor under you; the strip runs down from there.',
+      'Bands are strata. Bright bands are ore, dark red is magma, and a gap is a void you can fall into.',
+      'It tells you whether the next thirty metres are worth cutting before you cut them.',
+    ],
+  }, (ctx, api, state) => {
     const P = api.P;
     api.clear();
     const bandH = api.H / CORE_DEPTH;
@@ -209,7 +316,15 @@ export function createSensorRack({ cockpit, world }) {
 
   let section = null;
 
-  thermal.setPage((ctx, api, state) => {
+  withHelp(thermal, {
+    title: 'THERMAL APERTURE',
+    lines: [
+      'A false-colour section through the rock ahead, seen from the side, aligned with the nose.',
+      'Hot is bright. Magma reads white before you are anywhere near it.',
+      'Pressurised gas reads cold and shows as a dark pocket. Drilling into one detonates it.',
+      'This is the instrument that stops a run ending in a single unlucky cut.',
+    ],
+  }, (ctx, api, state) => {
     const P = api.P;
     api.clear();
     if (!section) return;
@@ -249,6 +364,13 @@ export function createSensorRack({ cockpit, world }) {
 
   // Everything starts unfitted.
   for (const m of Object.values(modules)) m.group.visible = false;
+
+  // The instruments are clickable in exactly one place — the help box. Registering
+  // them as screens costs nothing while they are hidden, because an invisible mesh
+  // is not raycast, and it means the "?" is a real target rather than decoration.
+  for (const m of Object.values(modules)) {
+    for (const s of m.screens) interaction?.register(s.mesh, { kind: 'screen', screen: s });
+  }
 
   let scanTimer = 0;
   let coreTimer = 0;

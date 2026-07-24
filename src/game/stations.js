@@ -74,6 +74,32 @@ export const DOCK_RANGE = 6.5;
 /** Above this altitude you are flying over the base, not standing on it. */
 export const DOCK_CEILING = 6;
 
+/**
+ * Solid volumes for the installations themselves, as world-space boxes.
+ *
+ * The buildings are meshes, not voxels, so nothing in the collision code knew they
+ * were there and a pod could fly through a hydrazine tank without noticing. Each
+ * structure is put up 7.5 m outboard of its pad (see createBase), which is what the
+ * radial offset here reproduces — the pad stays clear so docking is unaffected, and
+ * the building behind it is something you can hit.
+ */
+export const STATION_SOLIDS = STATIONS.map((s) => {
+  const dx = s.x - WORLD.CENTER_X;
+  const dz = s.z - WORLD.CENTER_Z;
+  const r = Math.hypot(dx, dz) || 1;
+  return {
+    key: s.key,
+    x: s.x + (7.5 * dx) / r,
+    z: s.z + (7.5 * dz) / r,
+    // One box per installation rather than a hull per girder: they are all roughly
+    // this footprint, and the pilot's question is "can I fly through it", not
+    // "by how many centimetres".
+    hx: 5.2,
+    hz: 5.0,
+    top: 7.2,
+  };
+});
+
 /** Nearest station the pod is docked with, or null. */
 export function stationAt(position) {
   if (position.y > DOCK_CEILING || position.y < -2) return null;

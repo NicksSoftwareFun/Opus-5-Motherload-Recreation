@@ -14,14 +14,14 @@ import { createPodExterior } from './render/podExterior.js';
 import { VoxelWorld } from './world/voxelWorld.js';
 import { generateWorld } from './world/generator.js';
 import { ChunkManager } from './world/chunkManager.js';
-import { integrate, depthOf } from './player/physics.js';
+import { integrate, depthOf, groundBelow } from './player/physics.js';
 import { Pod } from './player/pod.js';
 import { Drill } from './player/drill.js';
 import { Hazards } from './player/hazards.js';
 import { Session, PHASE } from './game/session.js';
 import { credits, SERVICE, UPGRADES, upgradeTier } from './game/economy.js';
 import { createBase } from './render/base.js';
-import { stationAt, STATIONS } from './game/stations.js';
+import { stationAt, STATIONS, STATION_SOLIDS } from './game/stations.js';
 import { SENSORS, SENSOR_BY_KEY, sensorAvailable } from './game/sensors.js';
 import { hasSave, saveGame, loadGame, applyDiff } from './game/save.js';
 import { Narrative, ENDING_LINES } from './game/narrative.js';
@@ -110,9 +110,23 @@ boomLamp.target.position.set(0, 0, -6);
 aimRig.add(boomLamp);
 aimRig.add(boomLamp.target);
 
-// The drill boom is built by the cockpit module but lives out here, on the aim rig,
-// so it is a real object in the mine rather than a prop inside the cabin.
-aimRig.add(cockpit.parts.drill);
+// The drill boom is built by the cockpit module but lives out here in the world, so
+// it is a real object in the mine rather than a prop inside the cabin.
+//
+// It hangs off its own rig rather than the aim rig, because the two want different
+// origins. Aiming happens from the pilot's eye — that is what the crosshair means —
+// but the boom is bolted to the *nose*, below the windscreen, and swings from there.
+// Rooted at the eye it looked like a lance the pilot was holding; rooted at the hull
+// and turned to face the same point, it looks like machinery.
+const boomRig = new THREE.Object3D();
+view.scene.add(boomRig);
+cockpit.parts.drill.position.set(0, 0, 0);
+boomRig.add(cockpit.parts.drill);
+/** Mount point on the hull, in pod-yaw space: forward of and below the pilot. */
+const BOOM_MOUNT = { forward: 0.60, down: 0.17 };
+const boomAim = new THREE.Vector3();
+/** The axis the boom is modelled along: straight out of the nose. */
+const BOOM_AXIS = new THREE.Vector3(0, 0, -1);
 
 // --- Game objects ---------------------------------------------------------
 const pod = new Pod();
@@ -292,11 +306,17 @@ let podYaw = 0;
 let headYaw = 0.40;
 let headPitch = -0.10;
 let shake = 0;
+/** Seconds spent motionless with a dry tank and no uplink. See the strand check. */
+let strandedFor = 0;
 
 const HEAD_YAW_LIMIT = 1.95;
 const HEAD_PITCH_LIMIT = 1.15;
 /** Radians per second on Q/E. About a second and a half for a half turn. */
 const TURN_RATE = 2.1;
+/** Rad/s² spooling up on the keys, and coasting down off them. */
+const TURN_ACCEL = 5.2;
+const TURN_DAMP = 3.4;
+let podYawRate = 0;
 
 /**
  * Optical zoom on the scroll wheel.
@@ -324,6 +344,7 @@ function update(dt, elapsed) {
   // the hazard checks, the instruments — wants these, and declaring them late has
   // now bitten twice with temporal-dead-zone errors.
   const live = session.systemsLive;
+  input.noteStep();
 
   // --- Zoom ---
   const notches = input.consumeWheel();
@@ -353,14 +374,20 @@ function update(dt, elapsed) {
   // drill and steering the machine fought each other over one input. Now the mouse
   // only ever moves the pilot's head, and turning is a key you hold. Everything in
   // the cabin stays where you left it.
-  const turnInput = input.axis('KeyE', 'KeyQ');
-  if (live && turnInput !== 0) podYaw += turnInput * TURN_RATE * dt;
+  // Yaw has mass. The pod is a few tonnes of drill on a gas thruster, so the keys
+  // command a torque and the rate builds and coasts down rather than switching on
+  // and off — the same feel as the translation thrusters, which was the point.
+  const turnInput = live ? input.axis('KeyE', 'KeyQ') : 0;
+  const turnTarget = turnInput * TURN_RATE;
+  const turnRamp = turnInput !== 0 ? TURN_ACCEL : TURN_DAMP;
+  podYawRate += THREE.MathUtils.clamp(turnTarget - podYawRate, -turnRamp * dt, turnRamp * dt);
+  if (Math.abs(podYawRate) > 1e-4) podYaw += podYawRate * dt;
 
   // Head tracking rides on top of the mouse look: the tracker moves the pilot's
   // head inside the cabin, the mouse still steers the pod. The follow detent above
   // reads only the mouse component, so leaning never spins the pod.
   tracker.update(dt);
-  if (input.wasPressed('F9')) tracker.recentre();
+  if (input.consumePress('F9')) tracker.recentre();
   const trk = tracker.pose;
   const lookYaw = headYaw + trk.yaw;
   const lookPitch = THREE.MathUtils.clamp(headPitch + trk.pitch, -1.35, 1.35);
@@ -373,7 +400,7 @@ function update(dt, elapsed) {
 
   // --- Crosshair interaction ---
   interaction.update(dt);
-  if (input.primaryPressed) interaction.activate();
+  if (input.consumePrimaryClick()) interaction.activate();
 
   // --- Thrust ---
   forward.set(-Math.sin(podYaw), 0, -Math.cos(podYaw));
@@ -396,7 +423,12 @@ function update(dt, elapsed) {
     else if (lift < 0) body.velocity.y -= lateral * 0.6 * dt;
   }
 
-  integrate(world, body, dt, { terrainHeightAt: surface.heightAt });
+  integrate(world, body, dt, {
+    terrainHeightAt: surface.heightAt,
+    // Only worth testing while the pod is anywhere near the surface; six boxes is
+    // cheap, but not at 120 Hz two hundred metres underground.
+    solids: body.position.y > -2 ? STATION_SOLIDS : null,
+  });
 
   // Declared here, before anything reads it: the failure checks, the narrative
   // beats and the instruments all want the depth *after* this frame's motion.
@@ -410,6 +442,7 @@ function update(dt, elapsed) {
     // A hard landing costs a capability, not just hull. This is the moment the
     // subsystem model earns its keep: you land badly and lose a headlight.
     const hit = pod.subsystems.applyDamage(damage / 160);
+    session.post(`IMPACT — ${body.impactSpeed.toFixed(0)} M/S — HULL STRUCK`, 3);
     if (hit) session.post(`FAULT: ${hit.name} DEGRADED`, 4);
     shake = Math.min(1, shake + over * 0.06);
     fx.impactDust(body.position, over);
@@ -511,8 +544,28 @@ function update(dt, elapsed) {
       if (event.module) session.post(`FAULT: ${event.module.name} DEGRADED`, 4);
     }
 
-    // Failure conditions. Being out of fuel on the pad is not an emergency.
-    const stranded = pod.fuel <= 0.01 && depth > 4;
+    // Failure conditions.
+    //
+    // A dry tank strands you *anywhere you cannot buy fuel*. It used to require
+    // being four metres down, on the reasoning that running out on the pad is not an
+    // emergency — but the surface is bigger than the pads. Coasting to a stop on the
+    // regolith half a kilometre from the fuel bay, or drifting out over the edge of
+    // the claim where there is no ground at all, left the pilot alive, immobile and
+    // with no way to end the run: a softlock dressed up as a sandbox.
+    //
+    // The uplink is the test. If the terminal can see a station you can refuel and
+    // it is not an emergency; if it cannot, it is one, whatever your altitude.
+    //
+    // Held for a moment first, and only once the pod has actually stopped, so that
+    // gliding the last of your momentum onto a pad with a dry tank still saves you
+    // — a rescue called while you are still moving would be charging for a landing
+    // you were going to make.
+    if (pod.fuel <= 0.01 && !stationAt(body.position) && body.velocity.lengthSq() < 0.25) {
+      strandedFor += dt;
+    } else {
+      strandedFor = 0;
+    }
+    const stranded = strandedFor > 1.5;
     if ((pod.hull <= 0 || stranded) && session.phase === PHASE.FLYING) {
       const fee = Math.max(SERVICE.RESCUE_MINIMUM, Math.round(pod.cash * SERVICE.RESCUE_CUT));
       session.beginRescue(
@@ -575,6 +628,23 @@ function update(dt, elapsed) {
   headRig.rotation.set(0, podYaw, 0, 'YXZ');
   aimRig.position.copy(body.position);
   aimRig.rotation.set(lookPitch, viewYaw, 0, 'YXZ');
+
+  // Boom: rooted on the hull, turned toward the point the aim ray is passing
+  // through a few metres out. Same direction as the drill cuts in, different origin,
+  // which is the whole of the trick — the bit still sits under the crosshair at
+  // working range and the boom no longer grows out of the pilot's face.
+  boomRig.position.set(
+    body.position.x - Math.sin(podYaw) * BOOM_MOUNT.forward,
+    body.position.y - BOOM_MOUNT.down,
+    body.position.z - Math.cos(podYaw) * BOOM_MOUNT.forward,
+  );
+  //
+  // Aimed with a quaternion rather than lookAt(). Object3D.lookAt points the
+  // object's *+Z* at the target — only cameras and lights point -Z — and the boom is
+  // modelled down -Z like the rest of the cabin. Using lookAt here bolted the drill
+  // on backwards: the bit ended up behind its own housing, pointing at the pod.
+  boomAim.copy(body.position).addScaledVector(aimDir, 4.0).sub(boomRig.position).normalize();
+  boomRig.quaternion.setFromUnitVectors(BOOM_AXIS, boomAim);
   // A damaged lamp circuit dims and flickers rather than simply switching off.
   const lampHealth = pod.lightScale;
   const flicker = lampHealth < 0.75 ? 0.55 + 0.45 * Math.abs(Math.sin(elapsed * 23 + Math.sin(elapsed * 7))) : 1;
@@ -605,8 +675,20 @@ function update(dt, elapsed) {
   dashboard.monitors.aim({ position: body.position, podYaw, aimDir });
 
   const speed = -body.velocity.y;
+
+  // Height above whatever is underneath, but only while there is daylight overhead:
+  // in a shaft the ground below you is the floor of your own hole, and reporting
+  // that as altitude would be a very confident way of being useless.
+  const ground = depth > 0.6 ? null : groundBelow(
+    world, body.position.x, body.position.y, body.position.z,
+    { terrainHeightAt: surface.heightAt },
+  );
+  const agl = ground === null
+    ? null
+    : Math.max(0, body.position.y - PHYSICS.POD_HALF_H - ground);
+
   const uiState = {
-    pod, session, drill, depth, speed, time: elapsed,
+    pod, session, drill, depth, speed, agl, time: elapsed,
     podYaw,
     podPosition: body.position,
     modified: chunks.modified,

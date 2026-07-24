@@ -16,13 +16,17 @@ export class Input {
     this.wheel = 0;
     this.sensitivity = 0.0022;
 
-    /** Edge-triggered button state, cleared by consumeClicks(). */
+    /**
+     * Edge-triggered state. A press lives here until somebody consumes it, or until
+     * the end of a frame in which the simulation actually ran — see endFrame().
+     */
     this.primaryPressed = false;
     this.secondaryPressed = false;
     this.primaryDown = false;
     this.secondaryDown = false;
-    /** Consumers set this each frame to be notified of taps on named keys. */
+    /** Taps on named keys, one entry per physical press. */
     this.pressedKeys = new Set();
+    this._stepped = false;
 
     this._bind();
   }
@@ -88,9 +92,46 @@ export class Input {
     return this.keys.has(code);
   }
 
-  /** True once per physical key press. */
+  /** True once per physical key press. Read-only: does not retire the press. */
   wasPressed(code) {
     return this.pressedKeys.has(code);
+  }
+
+  /**
+   * True once per physical key press, and retires it.
+   *
+   * Anything read inside the fixed-timestep update must consume rather than peek.
+   * A rendered frame can contain two or three 1/120 s substeps, and a flag that is
+   * merely peeked at is seen by every one of them.
+   */
+  consumePress(code) {
+    return this.pressedKeys.delete(code);
+  }
+
+  /**
+   * True once per physical left-click, and retires it.
+   *
+   * This is the difference between a switch that throws and a switch that wiggles.
+   * Peeking at the flag toggled the switch once per substep, so a frame with two
+   * substeps turned it on and straight back off — a visible twitch and no state
+   * change, at whatever rate the frame budget happened to land on an even number.
+   */
+  consumePrimaryClick() {
+    const p = this.primaryPressed;
+    this.primaryPressed = false;
+    return p;
+  }
+
+  /** True once per physical right-click, and retires it. */
+  consumeSecondaryClick() {
+    const p = this.secondaryPressed;
+    this.secondaryPressed = false;
+    return p;
+  }
+
+  /** Call at the top of every simulation substep. */
+  noteStep() {
+    this._stepped = true;
   }
 
   axis(negCode, posCode) {
@@ -113,12 +154,22 @@ export class Input {
     return { dx, dy };
   }
 
-  /** Call once at the end of every frame. */
+  /**
+   * Call once at the end of every frame.
+   *
+   * Edges are only retired if the simulation ran this frame. A fast monitor renders
+   * frames that contain no 1/120 s substep at all, and clearing unconditionally
+   * threw those clicks in the bin before anything could act on them — which is
+   * precisely what a switch that works "sometimes" feels like. Held over, the click
+   * is picked up by the next substep instead of being lost.
+   */
   endFrame() {
+    if (!this._stepped) return;
     this.primaryPressed = false;
     this.secondaryPressed = false;
     this.wheel = 0;
     this.pressedKeys.clear();
+    this._stepped = false;
   }
 
   /** Test hook: the harness drives the game without a real pointer lock. */

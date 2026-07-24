@@ -65,7 +65,9 @@ function sigilRing(size = 512, ink = '#c8442e') {
 export function createProvidence({ cockpit, world }) {
   // ---------------------------------------------------------------- cabin unit
   const unit = new THREE.Group();
-  unit.position.set(0, 0.50, -0.20);
+  // Forward of the roof port, so the eye hangs over the canopy rather than through
+  // the one piece of glass you look up out of.
+  unit.position.set(0, 0.50, -0.26);
   cockpit.root.add(unit);
 
   const ironMat = new THREE.MeshStandardMaterial({ color: 0x2a2622, roughness: 0.75, metalness: 0.6 });

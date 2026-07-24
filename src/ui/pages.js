@@ -118,13 +118,15 @@ export function menuPage(ctx, api, state) {
 
 export function statusPage(ctx, api, state) {
   api.clear();
-  const { pod, depth, drill, speed } = state;
+  const { pod, depth, drill, speed, agl } = state;
   const P = api.P;
   api.title('POD STATUS', `${speed >= 0 ? 'DESC' : 'ASC'} ${Math.abs(speed).toFixed(1)} M/S`);
 
-  // Depth gets the whole top of the tube. It is the number the run is about.
-  api.text('DEPTH', PAD, 48, { size: 12, color: P.dim });
-  api.text(`${Math.max(0, depth).toFixed(1)}`, api.W - 54, 56, {
+  // Depth gets the whole top of the tube. It is the number the run is about — until
+  // you are off the ground, when the number that matters is how far there is to fall.
+  const flying = agl !== null && agl !== undefined;
+  api.text(flying ? 'AGL' : 'DEPTH', PAD, 48, { size: 12, color: P.dim });
+  api.text(flying ? `+${agl.toFixed(1)}` : `${Math.max(0, depth).toFixed(1)}`, api.W - 54, 56, {
     size: 38, align: 'right', bold: true, color: P.hot,
   });
   api.text('M', api.W - PAD, 62, { size: 15, align: 'right', color: P.dim });

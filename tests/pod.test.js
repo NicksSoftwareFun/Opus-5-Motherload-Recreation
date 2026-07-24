@@ -487,3 +487,81 @@ describe('save', () => {
     expect(result.bytes).toBeLessThan(120_000);
   });
 });
+
+describe('impacts on every axis', () => {
+  /** A body sitting in open air, ready to be flown into something. */
+  const flyer = (x, y, z, v) => ({
+    position: vec(x, y, z),
+    velocity: { ...v },
+    onGround: false,
+    impactSpeed: 0,
+    hitWall: false,
+  });
+
+  it('records an impact when the pod hits a wall, not only a floor', () => {
+    const w = new VoxelWorld();
+    // A wall filling one voxel column, and the pod flying into it at speed.
+    for (let vy = 0; vy < 20; vy++) {
+      for (let vz = 0; vz < 64; vz++) w.set(40, vy, vz, ROCK);
+    }
+    const body = flyer(38.0, -5.5, 32.5, { x: 26, y: 0, z: 0 });
+    for (let i = 0; i < 40 && body.impactSpeed === 0; i++) integrate(w, body, 1 / 120);
+
+    expect(body.impactSpeed).toBeGreaterThan(20);
+    expect(body.hitWall).toBe(true);
+    expect(body.velocity.x).toBe(0);
+  });
+
+  it('records an impact when the pod hits a ceiling', () => {
+    const w = new VoxelWorld();
+    for (let vz = 0; vz < 64; vz++) {
+      for (let vx = 0; vx < 64; vx++) w.set(vx, 4, vz, ROCK);
+    }
+    // Layer 4 spans world Y [-5, -4], so the ceiling's underside is at -5.
+    const body = flyer(32.5, -7.0, 32.5, { x: 0, y: 22, z: 0 });
+    for (let i = 0; i < 40 && body.impactSpeed === 0; i++) integrate(w, body, 1 / 120);
+
+    expect(body.impactSpeed).toBeGreaterThan(15);
+    expect(body.velocity.y).toBe(0);
+  });
+
+  it('stops the pod against a surface installation', () => {
+    const w = new VoxelWorld();
+    const solids = [{ x: 40, z: 32.5, hx: 5, hz: 5, top: 7 }];
+    // Started close in: horizontal drag is heavy, and the point of the test is the
+    // collision, not how much speed the pod bleeds crossing the plaza.
+    const body = flyer(33.6, 1.0, 32.5, { x: 24, y: 0, z: 0 });
+    for (let i = 0; i < 60 && body.impactSpeed === 0; i++) {
+      integrate(w, body, 1 / 120, { solids });
+    }
+
+    expect(body.impactSpeed).toBeGreaterThan(18);
+    // Held outside the box rather than pushed through it.
+    expect(body.position.x).toBeLessThan(35.1);
+  });
+
+  it('lets the pod land on an installation roof rather than clipping into it', () => {
+    const w = new VoxelWorld();
+    const solids = [{ x: 32.5, z: 32.5, hx: 5, hz: 5, top: 7 }];
+    const body = flyer(32.5, 9.0, 32.5, { x: 0, y: 0, z: 0 });
+    for (let i = 0; i < 400; i++) integrate(w, body, 1 / 120, { solids });
+
+    expect(body.onGround).toBe(true);
+    expect(body.position.y).toBeGreaterThan(7.3);
+    expect(body.position.y).toBeLessThan(7.5);
+  });
+});
+
+describe('ground clearance', () => {
+  it('reports the height of the floor under the pod', async () => {
+    const { groundBelow } = await import('../src/player/physics.js');
+    const w = new VoxelWorld();
+    for (let vz = 0; vz < 64; vz++) {
+      for (let vx = 0; vx < 64; vx++) w.set(vx, 10, vz, ROCK);
+    }
+    // Layer 10 spans world Y [-11, -10]; its top face is -10.
+    expect(groundBelow(w, 32.5, 0, 32.5)).toBe(-10);
+    // Nothing within reach reads as no ground at all, not as zero.
+    expect(groundBelow(w, 32.5, 0, 32.5, { reach: 4 })).toBe(null);
+  });
+});

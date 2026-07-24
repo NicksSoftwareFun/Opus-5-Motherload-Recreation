@@ -56,6 +56,10 @@ menu will appear on that screen. Everything after that happens in the cockpit.
 The same list is written on a sticky note taped to the inside of the canopy, bottom
 left, in case you forget it mid-shaft.
 
+The pod is glazed like a helicopter: a deep windscreen, chin panels that carry on
+down past your feet, and a port in the roof. The altimeter reads **AGL +N.N** while
+there is air under the skids and switches back to depth once you are in the rock.
+
 Fly to a landing pad and your terminal becomes that vendor's console. Sell ore at the
 trader, refuel, repair, buy upgrades at the fitting shop, buy instruments at the sensor
 bureau, and save your contract at the uplink tower. Then go back down.
@@ -116,7 +120,10 @@ before you look down at the manifest.
 - Six surface installations, all transacted on the pod's own terminal.
 - Six sensor modules, each a physical fitting: densitometer, chirp sonar, strata
   profiler, thermal aperture, tomographic lattice, and the Providence Engine.
-- Per-module damage — a bad landing costs you a headlight, not just a number.
+- Per-module damage — a bad landing costs you a headlight, not just a number. So does
+  a wall, a ceiling, or the side of a hydrazine tank, at any angle you like.
+- Every instrument carries its own manual: a "?" in the corner of the tube explains
+  what it is showing you, and the same box closes it again.
 - Hazards that each teach a different lesson: magma, gas detonation, collapses, quakes.
 - Optional OpenTrack head tracking with real positional parallax.
 - Sound with no sound files: switchgear, screen chirps, the teletype's hammer, and a

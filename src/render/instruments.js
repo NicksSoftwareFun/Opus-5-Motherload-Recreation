@@ -209,8 +209,17 @@ export function digitDisplay({
   group.add(surround);
 
   let last = null;
+  let caption = label;
   const api = {
     group,
+    /** Relabel the readout. The altimeter changes what it is measuring in flight. */
+    setLabel(str) {
+      if (str === caption) return;
+      caption = str;
+      const text = last;
+      last = null;
+      api.setText(text ?? '');
+    },
     setText(str) {
       if (str === last) return;
       last = str;
@@ -230,11 +239,11 @@ export function digitDisplay({
       ctx.fillText(str.slice(-chars), px - 8, py * 0.54);
       ctx.shadowBlur = 0;
 
-      if (label) {
+      if (caption) {
         ctx.font = `bold ${py * 0.20}px "Arial Narrow", sans-serif`;
         ctx.textAlign = 'left';
         ctx.fillStyle = 'rgba(255,179,64,0.65)';
-        ctx.fillText(label, 8, py * 0.16);
+        ctx.fillText(caption, 8, py * 0.16);
       }
       texture.needsUpdate = true;
     },
