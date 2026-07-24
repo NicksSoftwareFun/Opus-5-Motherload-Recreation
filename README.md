@@ -12,6 +12,10 @@ screenshots below.
 
 ## Play it
 
+**In your browser, right now:**
+[nickssoftwarefun.github.io/Opus-5-Motherload-Recreation](https://nickssoftwarefun.github.io/Opus-5-Motherload-Recreation/)
+— rebuilt and redeployed by GitHub Actions on every push to the default branch.
+
 **The easy way.** Download `motherload-3d.html` from the
 [latest release](../../releases/latest) and double-click it. One file, no install, no
 server, no internet. It works because the game has no assets to fetch — everything is
@@ -28,7 +32,7 @@ npm run dev            # http://127.0.0.1:5173
 npm run build          # static bundle in dist/
 npm run build:single   # one self-contained file in release/
 npm run preview        # serve the built bundle
-npm test               # 56 unit tests
+npm test               # 65 unit tests
 npm run shots          # headless screenshot harness -> shots/
 npm run track          # OpenTrack head-tracking bridge (optional)
 ```
@@ -186,7 +190,7 @@ collision needs no scaling anywhere.
 npm test
 ```
 
-56 unit tests covering voxel indexing and the out-of-bounds conventions, mesher face
+65 unit tests covering voxel indexing and the out-of-bounds conventions, mesher face
 counts and culling, ray traversal against oblique tunnelling, collision and fall
 impacts, the ore rarity ladder and depth bands, the upgrade price curve, subsystem
 degradation, hazard fuses and collapse support rules, sensor sampling, narrative beat
