@@ -1,0 +1,48 @@
+name: Deploy to GitHub Pages
+
+# Builds the Vite bundle and publishes dist/ to Pages on every push to the
+# default branch. base: './' in vite.config.js makes the build relative, so
+# it works unmodified whether Pages serves it from the root or a project
+# subpath.
+on:
+  push:
+    # This repo has no `main` yet — `claude/motherload-3d-game-zhj952` is
+    # currently the default branch, so that's what's listed here. `main` is
+    # included too so the workflow keeps working with no edit needed once
+    # the branch is renamed or merged into a conventional `main`.
+    branches: [main, claude/motherload-3d-game-zhj952]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
