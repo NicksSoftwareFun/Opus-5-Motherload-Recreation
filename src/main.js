@@ -9,6 +9,7 @@ import { createCockpit } from './render/cockpit.js';
 import { createDashboard } from './render/dashboard.js';
 import { createInteraction } from './render/interaction.js';
 import { createFX } from './render/fx.js';
+import { createPodExterior } from './render/podExterior.js';
 import { VoxelWorld } from './world/voxelWorld.js';
 import { generateWorld } from './world/generator.js';
 import { ChunkManager } from './world/chunkManager.js';
@@ -57,6 +58,10 @@ view.scene.add(chunks.group);
 
 const fx = createFX();
 view.scene.add(fx.points);
+
+// Only ever visible inside a camera feed's render target — see render/monitors.js.
+const podExterior = createPodExterior();
+view.scene.add(podExterior.group);
 
 const cockpit = createCockpit();
 const interaction = createInteraction(cockpit.camera);
@@ -107,6 +112,7 @@ let lightsOn = true;
 let drillClutch = true;
 let manualPage = 0;
 let station = null;
+let mapOn = false;
 let saveAvailable = hasSave();
 
 /** Reset the world to pristine, then replay a saved diff over it if there is one. */
@@ -147,6 +153,7 @@ const actions = {
   setPower: (on) => session.setPower(on),
   setLights: (on) => { lightsOn = on; },
   setDrillClutch: (on) => { drillClutch = on; },
+  setMap: (on) => { mapOn = on; },
   jettison: () => {
     const lost = pod.jettisonCargo();
     session.post(lost > 0 ? `BAY PURGED — ${credits(lost)} LOST` : 'BAY ALREADY EMPTY');
@@ -154,8 +161,13 @@ const actions = {
   setPage: (p) => { session.page = p; },
   setManualPage: (n) => { manualPage = (n + 3) % 3; },
   recentreTracker: () => {
-    tracker.recentre();
-    session.post(tracker.connected ? 'HEAD TRACKER RECENTRED' : 'NO TRACKER SIGNAL');
+    if (tracker.connected) {
+      tracker.recentre();
+      session.post('HEAD TRACKER RECENTRED');
+    } else {
+      tracker.reconnect();
+      session.post('SEARCHING FOR TRACKER BRIDGE');
+    }
   },
   startRun: (fresh) => session.startRun(fresh),
 
@@ -201,7 +213,7 @@ const actions = {
   },
 };
 
-const dashboard = createDashboard({ cockpit, pod, session, interaction, actions });
+const dashboard = createDashboard({ cockpit, pod, session, interaction, actions, world });
 
 // --- Look model -----------------------------------------------------------
 let podYaw = 0;
@@ -213,6 +225,8 @@ let shake = 0;
 const HEAD_YAW_LIMIT = 1.95;
 const HEAD_PITCH_LIMIT = 1.15;
 const FOLLOW_DEADZONE = 0.45;
+/** Wider detent when idle, so a turned head only unwinds if you look right round. */
+const FOLLOW_IDLE_DEADZONE = 1.45;
 const FOLLOW_RATE = 5.0;
 
 const forward = new THREE.Vector3();
@@ -229,9 +243,18 @@ function update(dt, elapsed) {
   headYaw = THREE.MathUtils.clamp(headYaw - look.dx, -HEAD_YAW_LIMIT, HEAD_YAW_LIMIT);
   headPitch = THREE.MathUtils.clamp(headPitch - look.dy, -HEAD_PITCH_LIMIT, HEAD_PITCH_LIMIT);
 
-  // Past the detent, the pod turns to bring your gaze back to centre.
-  const excess = headYaw - THREE.MathUtils.clamp(headYaw, -FOLLOW_DEADZONE, FOLLOW_DEADZONE);
-  const turn = excess * Math.min(1, dt * FOLLOW_RATE);
+  // Past the detent, the pod turns to bring your gaze back to centre — but only
+  // while you are actually flying it. Standing still, your head stays where you put
+  // it, which is what makes the side consoles usable: park, look right, work the
+  // feed knob, look back. With the follow always on, every panel you turned to read
+  // would slide back to the middle of the canopy before you could click anything.
+  const steering = input.isDown('KeyW') || input.isDown('KeyS')
+    || input.isDown('KeyA') || input.isDown('KeyD')
+    || input.isDown('Space') || input.isDown('ControlLeft') || input.isDown('ShiftLeft')
+    || input.primaryDown;
+  const deadzone = steering ? FOLLOW_DEADZONE : FOLLOW_IDLE_DEADZONE;
+  const excess = headYaw - THREE.MathUtils.clamp(headYaw, -deadzone, deadzone);
+  const turn = excess * Math.min(1, dt * (steering ? FOLLOW_RATE : FOLLOW_RATE * 0.35));
   podYaw += turn;
   headYaw -= turn;
 
@@ -368,9 +391,18 @@ function update(dt, elapsed) {
     }
   }
 
+  // Exterior model and hull cameras track the body; the model stays hidden until a
+  // feed is actually being rendered.
+  podExterior.sync(body.position, podYaw, dt);
+  dashboard.monitors.aim({ position: body.position, podYaw, aimDir });
+
   const speed = -body.velocity.y;
   const uiState = {
     pod, session, drill, depth, speed, time: elapsed,
+    podYaw,
+    podPosition: body.position,
+    modified: chunks.modified,
+    mapOn,
     manualPage,
     station,
     tracker,
@@ -389,9 +421,11 @@ function update(dt, elapsed) {
   });
 }
 
-function render() {
+function render(dt) {
   chunks.update(body.position);
   const r = view.renderer;
+  // Camera feeds first, into their own target, with the pod's exterior revealed.
+  dashboard.monitors.render(r, view.scene, dt, { reveal: podExterior.group });
   r.autoClear = true;
   r.render(view.scene, view.camera);
   // Second pass: the cabin, over a cleared depth buffer. See render/cockpit.js.
@@ -423,6 +457,7 @@ window.__MOTHERLOAD__ = {
   drill,
   session,
   tracker,
+  podExterior,
   base,
   stations: STATIONS,
   fx,

@@ -3,7 +3,9 @@ import { Screen, PHOSPHOR } from '../ui/screen.js';
 import { PAGES } from '../ui/pages.js';
 import { PHASE } from '../game/session.js';
 import { dialGauge, ledBar, digitDisplay, warningLamp, nameplate } from './instruments.js';
-import { toggleSwitch } from './controls.js';
+import { toggleSwitch, rotarySelector } from './controls.js';
+import { createMonitors, FEED_LABELS } from './monitors.js';
+import { createHologram } from './hologram.js';
 import { credits } from '../game/economy.js';
 
 /**
@@ -20,7 +22,7 @@ import { credits } from '../game/economy.js';
 const DASH_Z = 0.028;
 const PANEL_Z = 0.026;
 
-export function createDashboard({ cockpit, pod, session, interaction, actions }) {
+export function createDashboard({ cockpit, pod, session, interaction, actions, world }) {
   const { dash, overhead, consoles } = cockpit.parts;
 
   // --- Dashboard: the main terminal ---------------------------------------
@@ -105,34 +107,34 @@ export function createDashboard({ cockpit, pod, session, interaction, actions })
     label: 'MASTER', sub: 'BUS PWR', size: 0.058,
     onChange: (on) => actions.setPower(on),
   });
-  switches.power.group.position.set(-0.095, 0.085, PANEL_Z);
+  switches.power.group.position.set(-0.095, 0.105, PANEL_Z);
   left.add(switches.power.group);
 
   // Standby telltale beside the master switch. In a cold, dark cabin this pulsing
   // amber lamp is the only thing on and is what tells a new pilot where to start.
   const standby = warningLamp({ label: 'STANDBY', color: 0xffb02a, width: 0.085 });
-  standby.group.position.set(-0.095, 0.168, PANEL_Z);
+  standby.group.position.set(-0.095, 0.176, PANEL_Z);
   left.add(standby.group);
 
   // The lamp alone is too small to find in a dark cabin, so it throws light of its
   // own onto the switch panel. Pulsing amber in an otherwise dead cockpit is the
   // whole tutorial: it says "the machine starts here" without a word of text.
   const standbyGlow = new THREE.PointLight(0xffb02a, 0, 0.5, 2);
-  standbyGlow.position.set(-0.095, 0.150, PANEL_Z + 0.06);
+  standbyGlow.position.set(-0.095, 0.158, PANEL_Z + 0.06);
   left.add(standbyGlow);
 
   switches.lights = toggleSwitch({
     label: 'LAMPS', sub: 'EXT', size: 0.058, on: true,
     onChange: (on) => actions.setLights(on),
   });
-  switches.lights.group.position.set(0.095, 0.085, PANEL_Z);
+  switches.lights.group.position.set(0.095, 0.105, PANEL_Z);
   left.add(switches.lights.group);
 
   switches.drill = toggleSwitch({
     label: 'DRILL', sub: 'CLUTCH', size: 0.058, on: true,
     onChange: (on) => actions.setDrillClutch(on),
   });
-  switches.drill.group.position.set(-0.095, -0.075, PANEL_Z);
+  switches.drill.group.position.set(-0.095, -0.010, PANEL_Z);
   left.add(switches.drill.group);
 
   switches.jettison = toggleSwitch({
@@ -143,8 +145,15 @@ export function createDashboard({ cockpit, pod, session, interaction, actions })
       setTimeout(() => switches.jettison.setState(false, true), 260);
     },
   });
-  switches.jettison.group.position.set(0.095, -0.075, PANEL_Z);
+  switches.jettison.group.position.set(-0.095, -0.125, PANEL_Z);
   left.add(switches.jettison.group);
+
+  switches.map = toggleSwitch({
+    label: 'MAP', sub: 'PROJECTOR', size: 0.058,
+    onChange: (on) => actions.setMap(on),
+  });
+  switches.map.group.position.set(0.095, -0.010, PANEL_Z);
+  left.add(switches.map.group);
 
   for (const sw of Object.values(switches)) {
     interaction.register(sw.hit, {
@@ -154,31 +163,42 @@ export function createDashboard({ cockpit, pod, session, interaction, actions })
     });
   }
 
-  // --- Right console: reserved for the exterior feed monitor ---------------
+  // --- Right console: the exterior camera feeds ----------------------------
   const right = consoles.right;
-  const feedScreen = new Screen({
-    width: 0.30, height: 0.20, px: 384, py: 256, palette: PHOSPHOR.amber, fps: 8, name: 'feed',
+  const monitors = createMonitors({ width: 0.30, height: 0.20 });
+  monitors.group.position.set(0, 0.070, PANEL_Z);
+  right.add(monitors.group);
+
+  const feedKnob = rotarySelector({
+    label: 'FEED', options: FEED_LABELS, size: 0.052,
+    onChange: (i) => monitors.setIndex(i),
   });
-  feedScreen.mesh.position.set(0, 0.055, PANEL_Z);
-  right.add(feedScreen.mesh);
-  feedScreen.setPage((ctx, api) => {
-    api.clear();
-    api.title('EXTERIOR FEED');
-    api.text('NO CAMERA FITTED', api.W / 2, api.H / 2, {
-      size: 15, align: 'center', color: api.P.dim,
-    });
+  feedKnob.group.position.set(-0.115, -0.135, PANEL_Z);
+  right.add(feedKnob.group);
+  interaction.register(feedKnob.hit, {
+    kind: 'control', control: feedKnob, onClick: () => feedKnob.toggle(),
   });
 
-  const rightPlate = nameplate({ text: 'OPTICS', width: 0.26, height: 0.034 });
-  rightPlate.position.set(0, -0.10, PANEL_Z);
+  const rightPlate = nameplate({ text: 'HULL OPTICS', width: 0.20, height: 0.032 });
+  rightPlate.position.set(0.075, -0.150, PANEL_Z);
   right.add(rightPlate);
+
+  // --- Hologram projector --------------------------------------------------
+  // Mounted on the cabin root rather than the dash so the column stands vertically
+  // regardless of how far the dashboard is raked, and offset right of centre so a
+  // deployed projection never sits on top of the drill sight.
+  const hologram = createHologram(world);
+  hologram.group.position.set(0.235, -0.205, -0.395);
+  cockpit.root.add(hologram.group);
 
   // --- Update --------------------------------------------------------------
   let standbyPhase = 0;
 
   return {
     terminal,
-    feedScreen,
+    monitors,
+    hologram,
+    feedKnob,
     switches,
     lamps,
 
@@ -186,7 +206,6 @@ export function createDashboard({ cockpit, pod, session, interaction, actions })
       const live = session.power;
       const tubePower = live ? 1 : 0;
       terminal.power += (tubePower - terminal.power) * Math.min(1, dt * 6);
-      feedScreen.power = terminal.power;
 
       // Instruments die with the bus. A dark cockpit should be genuinely dark.
       const t = live ? 1 : 0;
@@ -206,6 +225,7 @@ export function createDashboard({ cockpit, pod, session, interaction, actions })
       lamps.cargo.setState(flashing(pod.cargoFraction > 0.8, pod.cargoFull), dt);
 
       for (const sw of Object.values(switches)) sw.update(dt);
+      feedKnob.update(dt);
       standby.setState(live ? 0 : 2, dt);
       standbyPhase += dt * 3.2;
       standbyGlow.intensity = live ? 0 : 0.35 + Math.sin(standbyPhase) * 0.30;
@@ -216,7 +236,18 @@ export function createDashboard({ cockpit, pod, session, interaction, actions })
       else terminal.setPage(PAGES[session.page] ?? PAGES.status);
 
       terminal.update(dt, state);
-      feedScreen.update(dt, state);
+
+      monitors.update(dt, {
+        live,
+        depth: state.depth,
+        speed: state.speed,
+        heading: ((state.podYaw ?? 0) * -180 / Math.PI + 360) % 360,
+      });
+      hologram.update(dt, {
+        on: live && state.mapOn,
+        podPosition: state.podPosition,
+        modified: state.modified,
+      });
     },
   };
 }

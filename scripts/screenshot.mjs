@@ -155,6 +155,48 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'chase-feed',
+    description: 'Chase camera feed on the right console, pod visible outside.',
+    async run(page) {
+      await page.evaluate(() => {
+        const g = window.__MOTHERLOAD__;
+        g.boot(true);
+        g.teleport(40);
+        g.dashboard.feedKnob.setIndex(0);
+        g.look(-1.28, -0.30);
+        g.simulate(1.0);
+      });
+      await page.waitForTimeout(900);
+    },
+  },
+  {
+    name: 'hologram',
+    description: 'Volumetric mine map deployed after carving a network of tunnels.',
+    async run(page) {
+      await page.evaluate(() => {
+        const g = window.__MOTHERLOAD__;
+        g.boot(true);
+        // Carve a shaft with side galleries so the projection has something to show.
+        for (let vy = 0; vy < 120; vy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            for (let dz = -1; dz <= 1; dz++) g.chunks.setBlock(32 + dx, vy, 32 + dz, 0);
+          }
+          if (vy % 18 === 0) {
+            for (let i = 0; i < 22; i++) {
+              g.chunks.setBlock(32 + i, vy, 32, 0);
+              g.chunks.setBlock(32 - i, vy, 32 + (vy % 36 ? 1 : -1) * 6, 0);
+            }
+          }
+        }
+        g.teleport(72);
+        g.dashboard.switches.map.setState(true);
+        g.look(-0.30, -0.28);
+        g.simulate(2.5);
+      });
+      await page.waitForTimeout(900);
+    },
+  },
+  {
     name: 'shaft',
     description: 'Down a carved shaft, 60 m below the surface.',
     async run(page) {
@@ -248,7 +290,10 @@ async function main() {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   const consoleErrors = [];
   page.on('console', (m) => {
-    if (m.type() === 'error') consoleErrors.push(m.text());
+    // The head-tracking bridge is optional and normally absent; the browser logs a
+    // refused WebSocket that JavaScript cannot suppress. Not a game fault.
+    const text = m.text();
+    if (m.type() === 'error' && !text.includes('4243')) consoleErrors.push(text);
   });
   page.on('pageerror', (e) => consoleErrors.push(`pageerror: ${e.message}`));
 

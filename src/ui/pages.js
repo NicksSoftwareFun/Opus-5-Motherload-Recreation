@@ -251,18 +251,23 @@ export function systemsPage(ctx, api, state) {
   // Head tracking is a peripheral, so it is reported here like any other fitting.
   const tracker = state.tracker;
   const trackerState = !tracker?.available ? 'DISABLED'
-    : tracker.connected ? 'LOCKED' : 'NO SIGNAL';
+    : tracker.connected ? 'LOCKED'
+      : tracker.searching ? 'SEARCHING' : 'NO SIGNAL';
   api.text('HEAD TRACKER', PAD, y, { size: 12, color: P.dim });
   api.text(trackerState, api.W - PAD, y, {
     size: 13, align: 'right', bold: true,
     color: tracker?.connected ? P.hot : P.dim,
   });
   y += 14;
-  api.button(PAD, y, api.W - PAD * 2, 24, 'RECENTRE HEAD TRACKER  [F9]', {
-    id: 'sys:recentre',
-    disabled: !tracker?.connected,
-    onClick: () => state.actions.recentreTracker(),
-  });
+  api.button(
+    PAD, y, api.W - PAD * 2, 24,
+    tracker?.connected ? 'RECENTRE HEAD TRACKER  [F9]' : 'SEARCH FOR HEAD TRACKER',
+    {
+      id: 'sys:recentre',
+      disabled: !tracker?.available,
+      onClick: () => state.actions.recentreTracker(),
+    },
+  );
 
   tabs(api, state, 'systems');
 }

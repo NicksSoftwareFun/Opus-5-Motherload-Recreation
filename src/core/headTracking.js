@@ -31,7 +31,14 @@ const DEFAULTS = {
   smoothing: 18,
   /** Drop to disconnected if no packet arrives for this long. */
   timeout: 1.5,
-  retryDelay: 3000,
+  retryDelay: 4000,
+  /**
+   * Give up after this many failed attempts. The browser logs a console error for
+   * every refused WebSocket and we cannot suppress it, so retrying forever fills
+   * the console with noise on the overwhelmingly common "no bridge running" case.
+   * The SYS page offers a manual reconnect.
+   */
+  maxAttempts: 2,
 };
 
 const DEG = Math.PI / 180;
@@ -60,9 +67,12 @@ export function createHeadTracking(options = {}) {
   let sincePacket = Infinity;
   let retryTimer = null;
   let packets = 0;
+  let attempts = 0;
+  let gaveUp = false;
 
   function connect() {
-    if (disabled || socket) return;
+    if (disabled || socket || gaveUp) return;
+    attempts++;
     try {
       socket = new WebSocket(cfg.url);
     } catch {
@@ -106,6 +116,10 @@ export function createHeadTracking(options = {}) {
 
   function scheduleRetry() {
     if (disabled || retryTimer) return;
+    if (packets === 0 && attempts >= cfg.maxAttempts) {
+      gaveUp = true;
+      return;
+    }
     retryTimer = setTimeout(() => {
       retryTimer = null;
       connect();
@@ -118,6 +132,14 @@ export function createHeadTracking(options = {}) {
     pose,
     get connected() { return connected && sincePacket < cfg.timeout; },
     get available() { return !disabled; },
+    get searching() { return !disabled && !gaveUp && packets === 0; },
+
+    /** Manual retry from the SYS page, after starting the bridge. */
+    reconnect() {
+      gaveUp = false;
+      attempts = 0;
+      if (!socket) connect();
+    },
     get packets() { return packets; },
     config: cfg,
 
