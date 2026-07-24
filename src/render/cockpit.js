@@ -178,6 +178,14 @@ export function createCockpit() {
     racks[side < 0 ? 'left' : 'right'] = g;
   }
 
+  // --- Teletype bay --------------------------------------------------------
+  // At the pilot's right hip, angled up toward the seat. Mr Natas's traffic lands
+  // here as paper, so the story lives in the cabin rather than over the top of it.
+  const teletypeBay = new THREE.Group();
+  teletypeBay.position.set(0.415, -0.415, 0.115);
+  teletypeBay.rotation.set(-0.10, -0.85, 0.10);
+  root.add(teletypeBay);
+
   // --- Seat ----------------------------------------------------------------
   root.add(box(0.52, 0.09, 0.44, mat.rubber, { y: -0.60, z: 0.20 }));
   root.add(box(0.52, 0.60, 0.10, mat.rubber, { y: -0.28, z: 0.42, rx: 0.10 }));
@@ -311,7 +319,7 @@ export function createCockpit() {
     scene,
     camera,
     root,
-    parts: { dash, overhead, consoles, racks, drill, spinner, glass, canopy, shell },
+    parts: { dash, overhead, consoles, racks, teletypeBay, drill, spinner, glass, canopy, shell },
     materials: mat,
     lights: { cabinLamp, instrumentGlow, daylight, headlightBounce, drillLamp, hemi },
 

@@ -8,6 +8,7 @@ import { createMonitors, FEED_LABELS } from './monitors.js';
 import { createHologram } from './hologram.js';
 import { createSensorRack } from './sensorRack.js';
 import { createProvidence } from './providence.js';
+import { createTeletype } from './teletype.js';
 import { guardedSwitch } from './controls.js';
 import { credits } from '../game/economy.js';
 
@@ -210,6 +211,10 @@ export function createDashboard({ cockpit, pod, session, interaction, actions, w
   const sensorRack = createSensorRack({ cockpit, world });
   const providence = createProvidence({ cockpit, world });
 
+  // --- Teletype ------------------------------------------------------------
+  const teletype = createTeletype();
+  cockpit.parts.teletypeBay.add(teletype.group);
+
   // --- Update --------------------------------------------------------------
   let standbyPhase = 0;
 
@@ -219,6 +224,7 @@ export function createDashboard({ cockpit, pod, session, interaction, actions, w
     hologram,
     sensorRack,
     providence,
+    teletype,
     feedKnob,
     armSwitch,
     switches,
@@ -273,6 +279,8 @@ export function createDashboard({ cockpit, pod, session, interaction, actions, w
         modified: state.modified,
         lattice: pod.sensors.has('lattice'),
       });
+
+      teletype.update(dt, { live });
 
       sensorRack.sync(pod.sensors);
       sensorRack.update(dt, {

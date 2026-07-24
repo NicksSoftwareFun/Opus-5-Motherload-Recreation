@@ -656,6 +656,56 @@ export function sensorPage(ctx, api, state) {
   tabs(api, state, state.station?.page);
 }
 
+/**
+ * The ending. The Seal is open and the pod still flies — this is a page on the
+ * terminal like any other, and the tabs come back once you have read it, because
+ * the machine does not stop working just because the story finished.
+ */
+export function endingPage(ctx, api, state) {
+  api.clear();
+  const P = api.P;
+  const { pod, session } = state;
+  const t = session.endingAt ?? 0;
+
+  ctx.fillStyle = P.hot;
+  ctx.fillRect(0, 0, api.W, 26);
+  api.text('CONTRACT 7734 — CLOSED', api.W / 2, 13, {
+    size: 15, align: 'center', color: P.bg, bold: true,
+  });
+
+  const rows = [
+    ['DEEPEST', `${Math.round(pod.deepestDepth)} M`],
+    ['ORE RECOVERED', `${pod.stats.oreMined} U`],
+    ['BLOCKS CUT', String(pod.stats.blocksDrilled)],
+    ['LIFETIME EARNINGS', credits(pod.stats.earned)],
+    ['RECOVERIES', String(pod.stats.rescues)],
+    ['BALANCE', credits(pod.cash)],
+  ];
+
+  // Revealed one line at a time, in step with the teletype beside the seat.
+  const shown = Math.min(rows.length, Math.floor(t / 0.9));
+  let y = 52;
+  for (let i = 0; i < shown; i++) {
+    api.text(rows[i][0], PAD, y, { size: 12, color: P.dim });
+    api.text(rows[i][1], api.W - PAD, y, { size: 14, align: 'right', bold: true });
+    y += 24;
+  }
+
+  if (t > rows.length * 0.9 + 1.2) {
+    api.rule(y + 4);
+    api.text('THE DEBT IS SETTLED.', api.W / 2, y + 28, {
+      size: 15, align: 'center', bold: true, color: P.hot,
+    });
+    api.text('THE CLAIM REMAINS OPEN.', api.W / 2, y + 50, {
+      size: 12, align: 'center', color: P.dim,
+    });
+    api.text('READ THE PAPER BESIDE YOU.', api.W / 2, y + 68, {
+      size: 11, align: 'center', color: P.dim,
+    });
+    tabs(api, state, 'ending');
+  }
+}
+
 export const PAGES = {
   off: offPage,
   boot: bootPage,
@@ -664,6 +714,7 @@ export const PAGES = {
   systems: systemsPage,
   manual: manualPage,
   rescue: rescuePage,
+  ending: endingPage,
   'vendor:fuel': fuelPage,
   'vendor:repair': repairPage,
   'vendor:trader': traderPage,

@@ -287,6 +287,47 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'teletype',
+    description: 'Mr Natas arrives as paper: the dot-matrix printer beside the seat.',
+    async run(page) {
+      await page.evaluate(() => {
+        const g = window.__MOTHERLOAD__;
+        g.boot(true);
+        g.teleport(30);
+        g.dashboard.teletype.print([
+          'NATAS HEAVY INDUSTRIES',
+          'OFFICE OF THE FINANCIER',
+          '',
+          'WELCOME TO THE CLAIM.',
+          'THE POD IS YOURS. THE DEBT IS ALSO YOURS.',
+          'THESE ARE THE SAME SENTENCE.',
+          '',
+          'DIG. - M. NATAS',
+        ]);
+        g.look(-0.75, -0.82);
+        g.simulate(9);
+      });
+      await page.waitForTimeout(700);
+    },
+  },
+  {
+    name: 'the-seal',
+    description: 'The bottom of the claim: the door nobody built, opening.',
+    async run(page) {
+      await page.evaluate(() => {
+        const g = window.__MOTHERLOAD__;
+        g.boot(true);
+        const c = g.seal.centre;
+        // Inside the chamber, not in the wall: the vault interior stops at z 39.
+        g.body.position.set(c.x, c.y + 5.0, c.z + 6.0);
+        g.body.velocity.set(0, 0, 0);
+        g.look(0.0, 0.03, { pod: 0 });
+        g.simulate(6);
+      });
+      await page.waitForTimeout(900);
+    },
+  },
+  {
     name: 'shaft',
     description: 'Down a carved shaft, 60 m below the surface.',
     async run(page) {

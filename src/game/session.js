@@ -54,6 +54,7 @@ export class Session {
     this.notice = null;
     this._noticeTimer = 0;
     this.rescue = null;
+    this.endingAt = 0;
   }
 
   get booted() {
@@ -62,7 +63,8 @@ export class Session {
 
   /** Can the pod actually do anything? Everything is dead without master power. */
   get systemsLive() {
-    return this.power && this.phase === PHASE.FLYING;
+    // The ending does not take the controls away. You opened it; you can fly out.
+    return this.power && (this.phase === PHASE.FLYING || this.phase === PHASE.ENDING);
   }
 
   setPower(on) {
@@ -98,6 +100,15 @@ export class Session {
     this.phase = PHASE.FLYING;
     this.page = 'status';
     this.rescue = null;
+    this.endingAt = 0;
+  }
+
+  /** The Seal is open. The contract is over; the pod still works. */
+  beginEnding() {
+    if (this.phase === PHASE.ENDING) return;
+    this.phase = PHASE.ENDING;
+    this.page = 'ending';
+    this.endingAt = 0;
   }
 
   startRun(fresh = true) {
@@ -113,6 +124,7 @@ export class Session {
     }
 
     if (this.phase === PHASE.RESCUE && this.rescue) this.rescue.t += dt;
+    if (this.phase === PHASE.ENDING) this.endingAt += dt;
     if (this.phase !== PHASE.BOOT) return;
     this.bootTime += dt;
     this.revealed = Math.min(POST_LINES.length, Math.floor(this.bootTime / LINE_INTERVAL));

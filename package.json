@@ -1,6 +1,6 @@
 {
   "name": "motherload-3d",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "A 3D browser reimagining of Motherload \u2014 mine Mars for Mr. Natas.",
@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "shots": "node scripts/screenshot.mjs",
-    "track": "node tools/opentrack-bridge.mjs"
+    "track": "node tools/opentrack-bridge.mjs",
+    "build:single": "vite build --config vite.config.single.js"
   },
   "dependencies": {
     "three": "^0.185.1"

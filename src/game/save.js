@@ -20,7 +20,7 @@ export function hasSave() {
   }
 }
 
-export function saveGame({ seed, pod, position, modified, deepest = 0 }) {
+export function saveGame({ seed, pod, position, modified, deepest = 0, narrative = [] }) {
   // Flatten the modification map into a single number array: [index, id, ...].
   const diff = new Array(modified.size * 2);
   let i = 0;
@@ -36,6 +36,7 @@ export function saveGame({ seed, pod, position, modified, deepest = 0 }) {
     pod: pod.toJSON(),
     position: [position.x, position.y, position.z],
     deepest,
+    narrative,
     diff,
   };
 
@@ -58,6 +59,7 @@ export function loadGame() {
       pod: Pod.fromJSON(data.pod),
       position: data.position,
       deepest: data.deepest ?? 0,
+      narrative: data.narrative ?? [],
       diff: data.diff ?? [],
       savedAt: data.savedAt,
     };

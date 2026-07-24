@@ -23,7 +23,9 @@ import { createBase } from './render/base.js';
 import { stationAt, STATIONS } from './game/stations.js';
 import { SENSORS, SENSOR_BY_KEY, sensorAvailable } from './game/sensors.js';
 import { hasSave, saveGame, loadGame, applyDiff } from './game/save.js';
-import { AIR, BLOCKS } from './world/blocks.js';
+import { Narrative, ENDING_LINES } from './game/narrative.js';
+import { createMonolith, carveVault } from './render/monolith.js';
+import { AIR, BEDROCK, BLOCKS } from './world/blocks.js';
 import { WORLD, POD, PHYSICS, DEBUG } from './config.js';
 
 /**
@@ -49,8 +51,12 @@ view.scene.add(surface.group);
 const base = createBase();
 view.scene.add(base.group);
 
+const seal = createMonolith();
+view.scene.add(seal.group);
+
 const world = new VoxelWorld();
 const genInfo = generateWorld(world, seed);
+carveVault(world, { AIR, BEDROCK });
 if (DEBUG.enabled) console.log(`worldgen ${genInfo.ms.toFixed(0)}ms`);
 
 const atlas = createBlockAtlas();
@@ -117,10 +123,13 @@ let manualPage = 0;
 let station = null;
 let mapOn = false;
 let saveAvailable = hasSave();
+let narrative = new Narrative();
+let endingStarted = false;
 
 /** Reset the world to pristine, then replay a saved diff over it if there is one. */
 function resetWorld(diff = null) {
   generateWorld(world, seed);
+  carveVault(world, { AIR, BEDROCK });
   chunks.modified.clear();
   if (diff) {
     applyDiff(world, diff);
@@ -149,8 +158,13 @@ const session = new Session({
     }
     body.velocity.set(0, 0, 0);
     chunks.prime(body.position);
+    narrative = new Narrative(fresh ? [] : (loadGame()?.narrative ?? []));
+    endingStarted = false;
+    dashboard.teletype.clear();
+    launchedAt = 0;
   },
 });
+let launchedAt = 0;
 
 const actions = {
   setPower: (on) => session.setPower(on),
@@ -240,6 +254,7 @@ const actions = {
       position: body.position,
       modified: chunks.modified,
       deepest: pod.deepestDepth,
+      narrative: narrative.toJSON(),
     });
     saveAvailable = result.ok;
     session.post(
@@ -340,6 +355,11 @@ function update(dt, elapsed) {
   }
 
   integrate(world, body, dt, { terrainHeightAt: surface.heightAt });
+
+  // Declared here, before anything reads it: the failure checks, the narrative
+  // beats and the instruments all want the depth *after* this frame's motion.
+  const depth = depthOf(body.position);
+  pod.deepestDepth = Math.max(pod.deepestDepth, depth);
 
   if (body.impactSpeed > PHYSICS.FALL_SAFE_SPEED) {
     const over = body.impactSpeed - PHYSICS.FALL_SAFE_SPEED;
@@ -445,8 +465,30 @@ function update(dt, elapsed) {
   fx.update(dt);
   session.update(dt);
 
-  const depth = depthOf(body.position);
-  pod.deepestDepth = Math.max(pod.deepestDepth, depth);
+  // --- Mr Natas ---
+  // Beats are evaluated against a snapshot of the run and printed as paper. The
+  // teletype types them out while you keep flying; nothing here stops the machine.
+  if (live) {
+    launchedAt += dt;
+    for (const lines of narrative.update({
+      launched: launchedAt > 2.5,
+      depth,
+      earned: pod.stats.earned,
+      rescues: pod.stats.rescues,
+      sensors: pod.sensors,
+    })) {
+      dashboard.teletype.print(lines);
+    }
+
+    // The Seal. Reaching it is the end of the contract.
+    const toSeal = seal.distanceTo(body.position);
+    if (!endingStarted && toSeal < 5.5) {
+      endingStarted = true;
+      dashboard.teletype.print(ENDING_LINES);
+      session.beginEnding();
+    }
+  }
+  seal.update(dt, { opening: endingStarted });
 
   // --- Cameras and rigs ---
   shake = Math.max(0, shake - dt * 1.8);
@@ -546,7 +588,7 @@ loop.start();
 /** Debug + test surface. The screenshot harness drives the game through this. */
 window.__MOTHERLOAD__ = {
   ready: true,
-  version: '0.5.0',
+  version: '1.0.0',
   three: THREE.REVISION,
   loop,
   view,
@@ -561,6 +603,8 @@ window.__MOTHERLOAD__ = {
   drill,
   session,
   hazards,
+  seal,
+  get narrative() { return narrative; },
   tracker,
   podExterior,
   base,

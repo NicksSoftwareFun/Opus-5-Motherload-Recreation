@@ -36,7 +36,10 @@ export const RENDER_TRANSLUCENT = 2;
  * `tile` indexes the procedural atlas built in render/materials.js.
  */
 export const ORE_TABLE = [
-  { id: IRONIUM,     key: 'ironium',     name: 'Ironium',     tile: 4,  value: 30,     hardness: 1.00, color: 0xb4643c, glow: 0xff7a3c, peak: 14,  spread: 40, abundance: 0.150 },
+  // Peak sits deeper than the price ladder would suggest: a band centred at 14 m
+  // loses most of its bell curve to the surface, which made the cheapest ore rarer
+  // than the tier above it and inverted the early economy.
+  { id: IRONIUM,     key: 'ironium',     name: 'Ironium',     tile: 4,  value: 30,     hardness: 1.00, color: 0xb4643c, glow: 0xff7a3c, peak: 22,  spread: 42, abundance: 0.1750 },
   { id: BRONZIUM,    key: 'bronzium',    name: 'Bronzium',    tile: 5,  value: 60,     hardness: 1.10, color: 0xc98b3a, glow: 0xffab42, peak: 36,  spread: 44, abundance: 0.120 },
   { id: SILVERIUM,   key: 'silverium',   name: 'Silverium',   tile: 6,  value: 100,    hardness: 1.20, color: 0xd6dde4, glow: 0xdff0ff, peak: 62,  spread: 48, abundance: 0.0950 },
   { id: GOLDIUM,     key: 'goldium',     name: 'Goldium',     tile: 7,  value: 250,    hardness: 1.35, color: 0xffd447, glow: 0xffe27a, peak: 92,  spread: 52, abundance: 0.0700 },
