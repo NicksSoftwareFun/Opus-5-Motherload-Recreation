@@ -251,6 +251,42 @@ const SCENARIOS = [
     },
   },
   {
+    name: 'rescue',
+    description: 'Hull lost at depth; the emergency uplink relays the recovery terms.',
+    async run(page) {
+      await page.evaluate(() => {
+        const g = window.__MOTHERLOAD__;
+        g.boot(true);
+        g.teleport(120);
+        g.pod.cash = 84000;
+        g.pod.addOre(9, 5);
+        g.pod.hull = 0;
+        g.look(0.0, -0.72);
+        g.simulate(4.0);
+      });
+      await page.waitForTimeout(600);
+    },
+  },
+  {
+    name: 'faults',
+    description: 'Systems schematic after a rough trip: modules degraded.',
+    async run(page) {
+      await page.evaluate(() => {
+        const g = window.__MOTHERLOAD__;
+        g.boot(true);
+        g.teleport(60);
+        g.pod.subsystems.applyDamage(0.55, { module: 'lights' });
+        g.pod.subsystems.applyDamage(0.35, { module: 'thrusters' });
+        g.pod.subsystems.applyDamage(0.18, { module: 'bay' });
+        g.pod.hull = g.pod.maxHull * 0.42;
+        g.session.page = 'systems';
+        g.look(0.0, -0.72);
+        g.simulate(0.6);
+      });
+      await page.waitForTimeout(500);
+    },
+  },
+  {
     name: 'shaft',
     description: 'Down a carved shaft, 60 m below the surface.',
     async run(page) {

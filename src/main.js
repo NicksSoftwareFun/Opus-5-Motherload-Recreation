@@ -16,6 +16,7 @@ import { ChunkManager } from './world/chunkManager.js';
 import { integrate, depthOf } from './player/physics.js';
 import { Pod } from './player/pod.js';
 import { Drill } from './player/drill.js';
+import { Hazards } from './player/hazards.js';
 import { Session, PHASE } from './game/session.js';
 import { credits, SERVICE, UPGRADES, upgradeTier } from './game/economy.js';
 import { createBase } from './render/base.js';
@@ -100,6 +101,7 @@ aimRig.add(boomLamp.target);
 // --- Game objects ---------------------------------------------------------
 const pod = new Pod();
 const drill = new Drill(world, chunks, pod);
+const hazards = new Hazards(world, chunks, pod, pod.subsystems);
 
 const body = {
   position: new THREE.Vector3(WORLD.CENTER_X, 1.2, WORLD.CENTER_Z),
@@ -195,6 +197,28 @@ const actions = {
     if (!pod.spend(cost)) return session.post('INSUFFICIENT CREDIT');
     const done = pod.repair(points);
     return session.post(`+${done.toFixed(0)} PLATING — ${credits(cost)} CR`);
+  },
+  refitModules: () => {
+    const cost = Math.ceil(pod.subsystems.damageUnits() * SERVICE.REFIT_PER_UNIT);
+    if (cost < 1) return session.post('ALL MODULES SOUND');
+    if (!pod.spend(cost)) return session.post('INSUFFICIENT CREDIT');
+    pod.subsystems.repairAll(1);
+    return session.post(`MODULES REFITTED — ${credits(cost)} CR`);
+  },
+  acknowledgeRescue: () => {
+    // Cargo gone, a cut of the cash gone, fittings kept. The run continues.
+    pod.jettisonCargo();
+    pod.cash = Math.max(0, pod.cash - (session.rescue?.fee ?? 0));
+    pod.hull = pod.maxHull * 0.5;
+    pod.fuel = pod.maxFuel;
+    pod.heat = 0;
+    pod.alive = true;
+    pod.stats.rescues++;
+    pod.subsystems.repairAll(0.55);
+    body.position.set(WORLD.CENTER_X, 1.0, WORLD.CENTER_Z);
+    body.velocity.set(0, 0, 0);
+    chunks.prime(body.position);
+    session.completeRescue();
   },
   sellAll: () => {
     const units = pod.cargoUnits;
@@ -319,7 +343,12 @@ function update(dt, elapsed) {
 
   if (body.impactSpeed > PHYSICS.FALL_SAFE_SPEED) {
     const over = body.impactSpeed - PHYSICS.FALL_SAFE_SPEED;
-    pod.damage(over * PHYSICS.FALL_DAMAGE_PER_MS);
+    const damage = over * PHYSICS.FALL_DAMAGE_PER_MS;
+    pod.damage(damage);
+    // A hard landing costs a capability, not just hull. This is the moment the
+    // subsystem model earns its keep: you land badly and lose a headlight.
+    const hit = pod.subsystems.applyDamage(damage / 160);
+    if (hit) session.post(`FAULT: ${hit.name} DEGRADED`, 4);
     shake = Math.min(1, shake + over * 0.06);
     fx.impactDust(body.position, over);
   }
@@ -361,7 +390,58 @@ function update(dt, elapsed) {
     }
   }
 
-  if (live) pod.update(dt, { thrusting, drilling: drill.active });
+  if (result.broke) hazards.onBlockRemoved(result.broke.vx, result.broke.vy, result.broke.vz);
+
+  if (live) {
+    pod.update(dt, { thrusting, drilling: drill.active });
+    shake = Math.max(shake, hazards.update(dt, { position: body.position, velocity: body.velocity }));
+    for (const event of hazards.drain()) {
+      switch (event.kind) {
+        case 'explosion':
+          fx.blockBurst(event.position, 0xffd07a, true);
+          fx.impactDust(event.position, 22);
+          shake = Math.min(1.4, shake + 0.5 + event.strength);
+          session.post(
+            event.damage > 1
+              ? `GAS DETONATION — ${Math.round(event.damage)} DAMAGE`
+              : 'GAS DETONATION AT RANGE',
+          );
+          break;
+        case 'gas-lit':
+          session.post('POCKET BREACHED — CLEAR THE AREA', 1.4);
+          break;
+        case 'lava':
+          shake = Math.min(0.7, shake + dt * 2.2);
+          fx.drillSpray(dt, event.position, { x: 0, y: 1, z: 0 }, 0xff5a1e);
+          break;
+        case 'rockfall-hit':
+          fx.impactDust(event.position, 14);
+          shake = Math.min(1, shake + 0.35);
+          session.post('ROCKFALL — HULL STRUCK');
+          break;
+        case 'rock-landed':
+          fx.impactDust(event.position, 6);
+          break;
+        case 'quake':
+          shake = Math.min(1.2, shake + 0.9);
+          session.post('SEISMIC EVENT — STRATA SETTLING');
+          break;
+        default:
+          break;
+      }
+      if (event.module) session.post(`FAULT: ${event.module.name} DEGRADED`, 4);
+    }
+
+    // Failure conditions. Being out of fuel on the pad is not an emergency.
+    const stranded = pod.fuel <= 0.01 && depth > 4;
+    if ((pod.hull <= 0 || stranded) && session.phase === PHASE.FLYING) {
+      const fee = Math.max(SERVICE.RESCUE_MINIMUM, Math.round(pod.cash * SERVICE.RESCUE_CUT));
+      session.beginRescue(
+        pod.hull <= 0 ? 'HULL INTEGRITY LOST' : 'PROPELLANT EXHAUSTED — POD STRANDED',
+        fee,
+      );
+    }
+  }
   fx.update(dt);
   session.update(dt);
 
@@ -385,9 +465,12 @@ function update(dt, elapsed) {
   headRig.rotation.set(0, podYaw, 0, 'YXZ');
   aimRig.position.copy(body.position);
   aimRig.rotation.set(lookPitch, viewYaw, 0, 'YXZ');
-  for (const lamp of headlights) lamp.intensity = lightsOn && live ? 11 : 0;
+  // A damaged lamp circuit dims and flickers rather than simply switching off.
+  const lampHealth = pod.lightScale;
+  const flicker = lampHealth < 0.75 ? 0.55 + 0.45 * Math.abs(Math.sin(elapsed * 23 + Math.sin(elapsed * 7))) : 1;
+  for (const lamp of headlights) lamp.intensity = lightsOn && live ? 11 * lampHealth * flicker : 0;
   podFill.intensity = lightsOn && live ? 1.5 : 0.25;
-  boomLamp.intensity = lightsOn && live ? 9 : 0;
+  boomLamp.intensity = lightsOn && live ? 9 * lampHealth * flicker : 0;
 
   view.setDepth(depth);
   surface.update(dt, body.position);
@@ -424,7 +507,11 @@ function update(dt, elapsed) {
     upgrades: UPGRADES,
     sensors: SENSORS,
     sensorAvailable,
-    prices: { fuel: SERVICE.FUEL_PER_LITRE, repair: SERVICE.REPAIR_PER_POINT },
+    prices: {
+      fuel: SERVICE.FUEL_PER_LITRE,
+      repair: SERVICE.REPAIR_PER_POINT,
+      refit: SERVICE.REFIT_PER_UNIT,
+    },
     hasSave: saveAvailable,
     actions,
   };
@@ -473,6 +560,7 @@ window.__MOTHERLOAD__ = {
   pod,
   drill,
   session,
+  hazards,
   tracker,
   podExterior,
   base,

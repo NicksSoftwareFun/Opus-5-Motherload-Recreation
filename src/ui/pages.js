@@ -1,6 +1,7 @@
 import { PHASE, POST_LINES } from '../game/session.js';
 import { credits } from '../game/economy.js';
 import { BLOCKS } from '../world/blocks.js';
+import { MODULES } from '../player/subsystems.js';
 
 /**
  * Pages for the centre console terminal.
@@ -219,48 +220,52 @@ export function cargoPage(ctx, api, state) {
 export function systemsPage(ctx, api, state) {
   api.clear();
   const P = api.P;
-  api.title('SYSTEMS');
   const { pod } = state;
+  api.title('SYSTEMS', pod.subsystems.anyDamaged ? 'FAULTS' : 'NOMINAL');
 
-  const rows = [
-    ['DRILL ASSEMBLY', `MK ${pod.upgrades.drill + 1}`],
-    ['HULL PLATING', `${Math.round(pod.hull)}/${pod.maxHull}`],
-    ['FUEL CELL', `${Math.round(pod.fuel)}/${pod.maxFuel} L`],
-    ['LIFT ENGINE', `TYPE-${pod.upgrades.engine + 1}`],
-    ['HEAT EXCHANGER', `${pod.coolingScale.toFixed(1)}X`],
-    ['CARGO BAY', `${pod.maxCargo} U`],
-  ];
-
-  let y = 46;
-  for (const [name, value] of rows) {
-    api.text(name, PAD, y, { size: 13, color: P.dim });
-    api.text(value, api.W - PAD, y, { size: 14, align: 'right', bold: true });
-    y += 22;
+  // Module condition first: it is the thing that changes, and the thing that
+  // decides whether you can get back to the surface.
+  let y = 40;
+  for (const m of MODULES) {
+    const h = pod.subsystems.health[m.key];
+    api.text(m.name, PAD, y + 7, { size: 11, color: h < 0.4 ? P.hot : P.dim });
+    api.bar(PAD + 150, y, api.W - PAD * 2 - 150 - 44, 14, h, {
+      color: h < 0.4 ? P.hot : P.ink, segments: 16,
+    });
+    api.text(`${Math.round(h * 100)}%`, api.W - PAD, y + 7, {
+      size: 12, align: 'right', bold: true, color: h < 0.4 ? P.hot : P.ink,
+    });
+    y += 21;
   }
 
-  y += 4;
-  api.rule(y - 12);
-  api.text('SENSOR SUITE', PAD, y, { size: 12, color: P.dim });
+  y += 2;
+  api.rule(y - 4);
+  y += 14;
+  api.text('SPEC', PAD, y, { size: 11, color: P.dim });
   api.text(
-    pod.sensors.size === 0 ? 'NONE FITTED' : `${pod.sensors.size} MODULE(S) ONLINE`,
-    api.W - PAD, y,
-    { size: 13, align: 'right', bold: pod.sensors.size > 0 },
+    `DRILL MK${pod.upgrades.drill + 1}  ENG T${pod.upgrades.engine + 1}  BAY ${pod.maxCargo}/${pod.ratedCargo}U`,
+    api.W - PAD, y, { size: 11, align: 'right' },
   );
-  y += 22;
+  y += 18;
+  api.text('SENSOR SUITE', PAD, y, { size: 11, color: P.dim });
+  api.text(
+    pod.sensors.size === 0 ? 'NONE FITTED' : `${pod.sensors.size} ONLINE`,
+    api.W - PAD, y, { size: 11, align: 'right', bold: pod.sensors.size > 0 },
+  );
+  y += 18;
 
   // Head tracking is a peripheral, so it is reported here like any other fitting.
   const tracker = state.tracker;
   const trackerState = !tracker?.available ? 'DISABLED'
     : tracker.connected ? 'LOCKED'
       : tracker.searching ? 'SEARCHING' : 'NO SIGNAL';
-  api.text('HEAD TRACKER', PAD, y, { size: 12, color: P.dim });
+  api.text('HEAD TRACKER', PAD, y, { size: 11, color: P.dim });
   api.text(trackerState, api.W - PAD, y, {
-    size: 13, align: 'right', bold: true,
-    color: tracker?.connected ? P.hot : P.dim,
+    size: 11, align: 'right', bold: true, color: tracker?.connected ? P.hot : P.dim,
   });
-  y += 14;
+  y += 12;
   api.button(
-    PAD, y, api.W - PAD * 2, 24,
+    PAD, y, api.W - PAD * 2, 22,
     tracker?.connected ? 'RECENTRE HEAD TRACKER  [F9]' : 'SEARCH FOR HEAD TRACKER',
     {
       id: 'sys:recentre',
@@ -270,6 +275,54 @@ export function systemsPage(ctx, api, state) {
   );
 
   tabs(api, state, 'systems');
+}
+
+/**
+ * The rescue screen. Not a game-over box drawn over the world — the pod's own
+ * terminal, still bolted to the dash, relaying who is coming to collect you.
+ */
+export function rescuePage(ctx, api, state) {
+  api.clear();
+  const P = api.P;
+  const r = state.session.rescue ?? { reason: 'CATASTROPHIC FAILURE', fee: 0, t: 0 };
+
+  ctx.fillStyle = P.ink;
+  ctx.fillRect(0, 0, api.W, 26);
+  api.text('EMERGENCY UPLINK', api.W / 2, 13, {
+    size: 15, align: 'center', color: P.bg, bold: true,
+  });
+
+  const lines = [
+    r.reason,
+    '',
+    'BEACON ACKNOWLEDGED BY NATAS HEAVY',
+    'INDUSTRIES. RECOVERY IS AUTOMATIC.',
+    'RECOVERY IS NOT COMPLIMENTARY.',
+    '',
+    `RECOVERY FEE ......... ${credits(r.fee)} CR`,
+    'CARGO ................ FORFEIT',
+    'FITTINGS ............. RETAINED',
+    '',
+    'YOU AGREED TO THIS.',
+  ];
+  // Typed out one line at a time, the way the emergency channel would send them.
+  const shown = Math.min(lines.length, Math.floor(r.t / 0.28));
+  let y = 46;
+  for (let i = 0; i < shown; i++) {
+    api.text(lines[i], PAD, y, {
+      size: 12,
+      color: i === 0 || i === lines.length - 1 ? P.hot : P.ink,
+      bold: i === 0,
+    });
+    y += 17;
+  }
+
+  if (shown >= lines.length) {
+    api.button(PAD, api.H - 44, api.W - PAD * 2, 32, 'ACKNOWLEDGE', {
+      id: 'rescue:ack',
+      onClick: () => state.actions.acknowledgeRescue(),
+    });
+  }
 }
 
 export function manualPage(ctx, api, state) {
@@ -389,7 +442,7 @@ export function fuelPage(ctx, api, state) {
       onClick: () => state.actions.buyFuel(partial),
     });
 
-  api.text('HYDRAZINE IS BILLED TO YOUR CONTRACT.', PAD, 200, { size: 11, color: P.dim });
+  api.text('HYDRAZINE IS BILLED TO YOUR CONTRACT.', PAD, 210, { size: 11, color: P.dim });
   if (state.session.notice) {
     api.text(state.session.notice, PAD, 220, { size: 12, color: P.hot, bold: true });
   }
@@ -430,9 +483,23 @@ export function repairPage(ctx, api, state) {
       onClick: () => state.actions.repairHull(partial),
     });
 
-  api.text('PLATING ONLY. WE DO NOT ASK WHAT HIT YOU.', PAD, 200, { size: 11, color: P.dim });
+  const units = pod.subsystems.damageUnits();
+  const refitCost = Math.ceil(units * prices.refit);
+  api.rule(188);
+  api.text('MODULE FAULTS', PAD, 204, { size: 12, color: P.dim });
+  api.text(
+    pod.subsystems.anyDamaged ? pod.subsystems.worst.name : 'NONE',
+    api.W - PAD, 204,
+    { size: 12, align: 'right', bold: true, color: pod.subsystems.anyDamaged ? P.hot : P.ink },
+  );
+  api.button(PAD, 216, api.W - PAD * 2, 30,
+    units < 1 ? 'ALL MODULES SOUND' : `REFIT MODULES — ${credits(refitCost)} CR`, {
+      id: 'repair:refit',
+      disabled: units < 1 || !pod.canAfford(refitCost),
+      onClick: () => state.actions.refitModules(),
+    });
   if (state.session.notice) {
-    api.text(state.session.notice, PAD, 220, { size: 12, color: P.hot, bold: true });
+    api.text(state.session.notice, PAD, 252, { size: 12, color: P.hot, bold: true });
   }
   tabs(api, state, state.station?.page);
 }
@@ -596,6 +663,7 @@ export const PAGES = {
   cargo: cargoPage,
   systems: systemsPage,
   manual: manualPage,
+  rescue: rescuePage,
   'vendor:fuel': fuelPage,
   'vendor:repair': repairPage,
   'vendor:trader': traderPage,

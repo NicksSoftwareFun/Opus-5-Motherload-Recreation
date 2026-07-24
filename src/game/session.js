@@ -53,6 +53,7 @@ export class Session {
     this.page = 'status';
     this.notice = null;
     this._noticeTimer = 0;
+    this.rescue = null;
   }
 
   get booted() {
@@ -85,6 +86,20 @@ export class Session {
     this._noticeTimer = seconds;
   }
 
+  /** Hull gone, or stranded with a dry tank. Natas comes and gets you. */
+  beginRescue(reason, fee) {
+    if (this.phase === PHASE.RESCUE) return;
+    this.phase = PHASE.RESCUE;
+    this.rescue = { reason, fee, t: 0 };
+    this.page = 'rescue';
+  }
+
+  completeRescue() {
+    this.phase = PHASE.FLYING;
+    this.page = 'status';
+    this.rescue = null;
+  }
+
   startRun(fresh = true) {
     this.phase = PHASE.FLYING;
     this.page = 'status';
@@ -97,6 +112,7 @@ export class Session {
       if (this._noticeTimer <= 0) this.notice = null;
     }
 
+    if (this.phase === PHASE.RESCUE && this.rescue) this.rescue.t += dt;
     if (this.phase !== PHASE.BOOT) return;
     this.bootTime += dt;
     this.revealed = Math.min(POST_LINES.length, Math.floor(this.bootTime / LINE_INTERVAL));

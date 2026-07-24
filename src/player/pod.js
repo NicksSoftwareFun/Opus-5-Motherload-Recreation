@@ -1,6 +1,7 @@
 import { POD } from '../config.js';
 import { BLOCKS } from '../world/blocks.js';
 import { ORE_VALUE, upgradeValue, MAX_LEVEL } from '../game/economy.js';
+import { Subsystems } from './subsystems.js';
 
 /**
  * Everything the pod *is*, as opposed to where it is: consumables, cargo, money,
@@ -12,6 +13,8 @@ import { ORE_VALUE, upgradeValue, MAX_LEVEL } from '../game/economy.js';
 export class Pod {
   constructor() {
     this.upgrades = { drill: 0, hull: 0, tank: 0, engine: 0, cooling: 0, cargo: 0 };
+    /** Per-module condition. Upgrades set the ceiling; damage sets what you get. */
+    this.subsystems = new Subsystems();
     /** Sensor modules owned, by key. Populated by the Sensor Bureau. */
     this.sensors = new Set();
 
@@ -32,10 +35,25 @@ export class Pod {
 
   get maxFuel() { return upgradeValue('tank', this.upgrades.tank); }
   get maxHull() { return upgradeValue('hull', this.upgrades.hull); }
-  get maxCargo() { return upgradeValue('cargo', this.upgrades.cargo); }
-  get drillPower() { return upgradeValue('drill', this.upgrades.drill); }
-  get thrustScale() { return upgradeValue('engine', this.upgrades.engine); }
-  get coolingScale() { return upgradeValue('cooling', this.upgrades.cooling); }
+  /** Fitted capacity, before damage. */
+  get ratedCargo() { return upgradeValue('cargo', this.upgrades.cargo); }
+
+  // Everything below is what the pod can actually do right now: the fitted spec
+  // scaled by the condition of the module responsible for it. A damaged bay really
+  // does hold less, and a damaged thruster bus really does struggle to climb out.
+  get maxCargo() {
+    return Math.max(1, Math.round(this.ratedCargo * this.subsystems.factor('bay')));
+  }
+  get drillPower() {
+    return upgradeValue('drill', this.upgrades.drill) * this.subsystems.factor('drill');
+  }
+  get thrustScale() {
+    return upgradeValue('engine', this.upgrades.engine) * this.subsystems.factor('thrusters');
+  }
+  get coolingScale() {
+    return upgradeValue('cooling', this.upgrades.cooling) * this.subsystems.factor('cooling');
+  }
+  get lightScale() { return this.subsystems.factor('lights'); }
 
   get fuelFraction() { return this.maxFuel > 0 ? this.fuel / this.maxFuel : 0; }
   get hullFraction() { return this.maxHull > 0 ? this.hull / this.maxHull : 0; }
@@ -175,6 +193,7 @@ export class Pod {
       hull: this.hull,
       heat: this.heat,
       cargo: [...this.cargo.entries()],
+      subsystems: this.subsystems.toJSON(),
       deepestDepth: this.deepestDepth,
       stats: { ...this.stats },
     };
@@ -189,6 +208,7 @@ export class Pod {
     pod.hull = data.hull ?? pod.maxHull;
     pod.heat = data.heat ?? 0;
     pod.cargo = new Map(data.cargo ?? []);
+    pod.subsystems = Subsystems.fromJSON(data.subsystems);
     pod.deepestDepth = data.deepestDepth ?? 0;
     Object.assign(pod.stats, data.stats ?? {});
     pod.alive = pod.hull > 0;

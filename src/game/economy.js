@@ -90,6 +90,8 @@ export const MAX_LEVEL = UPGRADES[0].tiers.length - 1;
 export const SERVICE = {
   FUEL_PER_LITRE: 3.2,
   REPAIR_PER_POINT: 9,
+  /** Per point of accumulated module damage, charged at the repair rig. */
+  REFIT_PER_UNIT: 26,
   /** Fraction of cash Mr Natas keeps when he has to come and get you. */
   RESCUE_CUT: 0.22,
   RESCUE_MINIMUM: 250,
