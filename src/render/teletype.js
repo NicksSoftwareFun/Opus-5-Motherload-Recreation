@@ -40,7 +40,7 @@ function wrap(line, cols) {
   return out;
 }
 
-export function createTeletype({ onStrike = null } = {}) {
+export function createTeletype({ onStrike = null, onLine = null } = {}) {
   const group = new THREE.Group();
 
   const bodyMat = new THREE.MeshStandardMaterial({
@@ -205,6 +205,10 @@ export function createTeletype({ onStrike = null } = {}) {
           typed = 0;
           pauseTimer = LINE_PAUSE;
           dirty = true;
+          // The carriage going back and the paper stepping on: the punctuation of
+          // a dot-matrix printer, and the half of the sound people actually
+          // remember.
+          onLine?.();
         }
       }
 

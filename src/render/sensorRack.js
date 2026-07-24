@@ -99,7 +99,7 @@ function oreInk(id) {
   return '#ff9a5a';
 }
 
-export function createSensorRack({ cockpit, world, interaction = null }) {
+export function createSensorRack({ cockpit, world, interaction = null, audio = null }) {
   const { dash, racks } = cockpit.parts;
   const modules = {};
 
@@ -399,6 +399,9 @@ export function createSensorRack({ cockpit, world, interaction = null }) {
         sonarTimer += dt;
         if (sonarTimer > 0.7 && live) {
           sonarTimer = 0;
+          // The pulse going out and the rock answering. A sonar you can only see
+          // is a chart; a sonar you can hear is an instrument.
+          audio?.sonarPing();
           // Rotate returns into pod-relative axes so the scope reads nose-up.
           const cos = Math.cos(-podYaw);
           const sin = Math.sin(-podYaw);

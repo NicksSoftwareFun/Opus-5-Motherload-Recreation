@@ -216,11 +216,14 @@ export function createDashboard({ cockpit, pod, session, interaction, actions, w
   cockpit.root.add(hologram.group);
 
   // --- Sensor fittings -----------------------------------------------------
-  const sensorRack = createSensorRack({ cockpit, world, interaction });
+  const sensorRack = createSensorRack({ cockpit, world, interaction, audio });
   const providence = createProvidence({ cockpit, world });
 
   // --- Teletype ------------------------------------------------------------
-  const teletype = createTeletype({ onStrike: () => audio?.typeTick() });
+  const teletype = createTeletype({
+    onStrike: () => audio?.typeTick(),
+    onLine: () => audio?.carriageReturn(),
+  });
   cockpit.parts.teletypeBay.add(teletype.group);
 
   // --- Sticky note ---------------------------------------------------------

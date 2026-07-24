@@ -26,7 +26,8 @@ import { SENSORS, SENSOR_BY_KEY, sensorAvailable } from './game/sensors.js';
 import { hasSave, saveGame, loadGame, applyDiff } from './game/save.js';
 import { Narrative, ENDING_LINES } from './game/narrative.js';
 import { createMonolith, carveVault } from './render/monolith.js';
-import { AIR, BEDROCK, BLOCKS } from './world/blocks.js';
+import { AIR, BEDROCK, BLOCKS, LAVA } from './world/blocks.js';
+import { scanHazards } from './player/sensorData.js';
 import { WORLD, POD, PHYSICS, RENDER, DEBUG } from './config.js';
 
 /**
@@ -191,12 +192,15 @@ const session = new Session({
 let launchedAt = 0;
 
 const actions = {
-  setPower: (on) => session.setPower(on),
+  // The pod coming alive, or going dark. The CRT's degauss thunk is the single
+  // most recognisable "this machine just switched on" sound there is.
+  setPower: (on) => { session.setPower(on); audio.crtPower(on); },
   setLights: (on) => { lightsOn = on; },
-  setDrillClutch: (on) => { drillClutch = on; },
-  setMap: (on) => { mapOn = on; },
+  setDrillClutch: (on) => { drillClutch = on; audio.clutch(on); },
+  setMap: (on) => { mapOn = on; audio.projector(on); },
   setProvidence: (on) => {
     dashboard.providence.setArmed(on);
+    audio.providence(on);
     session.post(on ? 'PROVIDENCE ENGINE ARMED — SERVICE ACCRUING' : 'PROVIDENCE ENGINE SAFE');
   },
   buySensor: (key) => {
@@ -205,11 +209,12 @@ const actions = {
     if (!sensorAvailable(key, pod.sensors)) { audio.deny(); return session.post('PRIOR MODULE REQUIRED'); }
     if (!pod.spend(module.cost)) { audio.deny(); return session.post('INSUFFICIENT CREDIT'); }
     pod.sensors.add(key);
-    audio.confirm();
+    audio.servo();
     return session.post(`FITTED: ${module.short}`);
   },
   jettison: () => {
     const lost = pod.jettisonCargo();
+    audio.jettison();
     session.post(lost > 0 ? `BAY PURGED — ${credits(lost)} LOST` : 'BAY ALREADY EMPTY');
   },
   setPage: (p) => { session.page = p; },
@@ -229,14 +234,14 @@ const actions = {
     const cost = Math.ceil(litres * SERVICE.FUEL_PER_LITRE);
     if (!pod.spend(cost)) { audio.deny(); return session.post('INSUFFICIENT CREDIT'); }
     const added = pod.refuel(litres);
-    audio.confirm();
+    audio.pump();
     return session.post(`+${added.toFixed(0)}L — ${credits(cost)} CR`);
   },
   repairHull: (points) => {
     const cost = Math.ceil(points * SERVICE.REPAIR_PER_POINT);
     if (!pod.spend(cost)) { audio.deny(); return session.post('INSUFFICIENT CREDIT'); }
     const done = pod.repair(points);
-    audio.confirm();
+    audio.weld();
     return session.post(`+${done.toFixed(0)} PLATING — ${credits(cost)} CR`);
   },
   refitModules: () => {
@@ -244,7 +249,7 @@ const actions = {
     if (cost < 1) { audio.deny(); return session.post('ALL MODULES SOUND'); }
     if (!pod.spend(cost)) { audio.deny(); return session.post('INSUFFICIENT CREDIT'); }
     pod.subsystems.repairAll(1);
-    audio.confirm();
+    audio.servo();
     return session.post(`MODULES REFITTED — ${credits(cost)} CR`);
   },
   acknowledgeRescue: () => {
@@ -274,7 +279,7 @@ const actions = {
     if (!next || level >= 5) { audio.deny(); return session.post('ALREADY AT MAXIMUM SPEC'); }
     if (!pod.spend(next.cost)) { audio.deny(); return session.post('INSUFFICIENT CREDIT'); }
     pod.applyUpgrade(key);
-    audio.confirm();
+    audio.servo();
     return session.post(`FITTED: ${next.name.toUpperCase()}`);
   },
   saveGame: () => {
@@ -308,6 +313,12 @@ let headPitch = -0.10;
 let shake = 0;
 /** Seconds spent motionless with a dry tank and no uplink. See the strand check. */
 let strandedFor = 0;
+/** Throttled magma proximity, 0..1, driving the ambience. See the audio block. */
+let magmaNear = 0;
+let magmaScanIn = 0;
+/** Edges the audio watches: POST lines appearing, and the phase turning to rescue. */
+let lastRevealed = 0;
+let lastPhase = null;
 
 const HEAD_YAW_LIMIT = 1.95;
 const HEAD_PITCH_LIMIT = 1.15;
@@ -447,6 +458,10 @@ function update(dt, elapsed) {
     shake = Math.min(1, shake + over * 0.06);
     fx.impactDust(body.position, over);
     audio.thud(over);
+  } else if (body.impactSpeed > 1.2) {
+    // Everything below the damage threshold is just a landing, and a landing you
+    // walked away from should sound like one rather than being silent.
+    audio.touchdown(body.impactSpeed);
   }
 
   // --- Drill ---
@@ -518,6 +533,7 @@ function update(dt, elapsed) {
           );
           break;
         case 'gas-lit':
+          audio.gasVent(1);
           session.post('POCKET BREACHED — CLEAR THE AREA', 1.4);
           break;
         case 'lava':
@@ -535,7 +551,7 @@ function update(dt, elapsed) {
           break;
         case 'quake':
           shake = Math.min(1.2, shake + 0.9);
-          audio.thud(16);
+          audio.quake(depth / 20);
           session.post('SEISMIC EVENT — STRATA SETTLING');
           break;
         default:
@@ -585,6 +601,56 @@ function update(dt, elapsed) {
     power: pod.drillPower,
   });
   audio.thruster(dt, live && thrusting ? (lift > 0 ? 1 : 0.55) : 0);
+
+  // --- The world, out loud -------------------------------------------------
+  // Magma is scanned rather than evented, because what the pilot needs is not
+  // "you are touching lava" but "there is a chamber somewhere off to your left" —
+  // in time to change their mind about the next cut. Twice a second is plenty for
+  // something that can only get closer at flying speed.
+  magmaScanIn -= dt;
+  if (magmaScanIn <= 0) {
+    magmaScanIn = 0.5;
+    magmaNear = 0;
+    if (depth > 0) {
+      for (const hit of scanHazards(world, body.position, 14, 2)) {
+        if (hit.id !== LAVA) continue;
+        magmaNear = Math.max(magmaNear, 1 - hit.distance / 14);
+      }
+    }
+  }
+
+  audio.update(dt, {
+    depth,
+    live,
+    hull: pod.hullFraction,
+    magma: magmaNear,
+    speed: body.velocity.length(),
+    drilling: drill.active ? 1 : 0,
+    // The score leans in when the mine is winning: heat, magma and a failing hull
+    // are the three things that end runs.
+    danger: Math.min(1, magmaNear * 0.7 + pod.heatFraction * 0.5 + (1 - pod.hullFraction) * 0.6),
+  });
+
+  // The self-test printing itself out, one line at a time, and Mr Natas cutting
+  // in on the emergency channel. Both are edges on state the session already
+  // keeps, so they are watched here rather than given callbacks of their own.
+  if (session.revealed !== lastRevealed) {
+    if (session.revealed > lastRevealed) audio.postTick();
+    lastRevealed = session.revealed;
+  }
+  if (session.phase !== lastPhase) {
+    if (session.phase === PHASE.RESCUE) audio.rescueSting();
+    lastPhase = session.phase;
+  }
+
+  // Klaxons, one at a time, most severe first. These conditions are exactly the
+  // ones the warning lamps flash on, so the lamp and the tone always agree.
+  audio.faults(dt, {
+    hull: live && pod.hullFraction < 0.22,
+    heat: live && pod.heatFraction > 0.86,
+    fuel: live && pod.fuelFraction < 0.12,
+    cargo: live && pod.cargoFull,
+  });
 
   // --- Mr Natas ---
   // Beats are evaluated against a snapshot of the run and printed as paper. The
@@ -661,6 +727,7 @@ function update(dt, elapsed) {
   const nowStation = live ? stationAt(body.position) : null;
   if (nowStation !== station) {
     station = nowStation;
+    audio.uplink(Boolean(station));
     if (station) {
       session.page = station.page;
       session.post(`UPLINK ESTABLISHED — ${station.name}`);
@@ -761,6 +828,7 @@ window.__MOTHERLOAD__ = {
   stations: STATIONS,
   fx,
   input,
+  audio,
   genInfo,
   PHASE,
 

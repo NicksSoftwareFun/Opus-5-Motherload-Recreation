@@ -11,7 +11,9 @@
     "test": "vitest run",
     "shots": "node scripts/screenshot.mjs",
     "track": "node tools/opentrack-bridge.mjs",
-    "build:single": "vite build --config vite.config.single.js"
+    "build:single": "vite build --config vite.config.single.js",
+    "audio": "node scripts/audio-check.mjs",
+    "switches": "node scripts/switch-check.mjs"
   },
   "dependencies": {
     "three": "^0.185.1"

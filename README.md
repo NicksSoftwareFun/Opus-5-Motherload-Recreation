@@ -32,8 +32,10 @@ npm run dev            # http://127.0.0.1:5173
 npm run build          # static bundle in dist/
 npm run build:single   # one self-contained file in release/
 npm run preview        # serve the built bundle
-npm test               # 65 unit tests
+npm test               # 71 unit tests
 npm run shots          # headless screenshot harness -> shots/
+npm run audio          # measure the synthesised mix in a headless browser
+npm run switches       # click every cockpit switch and check it stays thrown
 npm run track          # OpenTrack head-tracking bridge (optional)
 ```
 
@@ -110,11 +112,41 @@ yaw thruster rather than a first-person shooter with a rifle. `Ctrl` overrides t
 entirely and sinks the bit straight down, so the ordinary business of digging a shaft
 does not require you to hold the sight steady on the floor.
 
-Everything the cabin does, it also says out loud. Switches clack, screen regions chirp,
-the teletype hammers each character as it prints, and the drill's rumble is synthesised
-from the block under the bit — hardness sets the filter, and ore opens a resonant ring
-pitched off its value, so you can hear that you have hit something worth stopping for
-before you look down at the manifest.
+## Sound
+
+There are no audio files. Every sound in the game is synthesised at boot out of
+oscillators, filtered noise and envelopes, for the same reason there are no texture
+files — and it is mixed the way simulators mix, on four buses: a dry cabin, a mine
+behind a small generated reverb, the environment behind that, and a score underneath
+everything with a compressor across the lot.
+
+**Things that run** are continuous voices driven by the simulation, not samples
+triggered by it. The drill's timbre comes from the block under the bit: hardness
+raises and tightens the band it grinds in, and ore opens a resonant ring pitched off
+its value, so you hear that you have hit something worth stopping for before you look
+down at the manifest. Thrusters have a hiss and a frame rumble. The map projector has
+a fan. The cabin has a bus bar humming in it the moment you throw master power, which
+is the whole opening of the game: a cold, silent cockpit that comes alive.
+
+**Things you do** are mechanical and discrete. Switches clack, screen regions chirp,
+the teletype hammers every character and slams its carriage at the end of a line, the
+terminal thunks like a degaussing coil when it comes up, hydrazine gurgles into the
+tank, the repair rig welds.
+
+**Things going wrong** get klaxons — one at a time, most severe first, each with its
+own cadence, so you can name the fault from across the cabin without reading the lamp.
+
+**The environment plays itself.** Thin Mars wind on the surface crossfading into rock
+pressure as you descend; the hull creaking more often the deeper and more damaged it
+gets; magma audible through the rock before you cut into it.
+
+And there is a **score, which is not a soundtrack**: a tempo-free chord that belongs
+to the stratum you are in. The root walks down as you dig, the mode sours, the filter
+closes, and by the bottom of the claim the harmony is a minor second against a
+tritone. It ducks under the drill, leans in when the mine is winning, and is silent
+when the pod is switched off. You can tell roughly how deep you are with your eyes
+shut. `npm run audio` measures all of it in a headless browser, because a synthesised
+mix fails silently.
 
 ## What is in it
 
@@ -130,8 +162,9 @@ before you look down at the manifest.
   what it is showing you, and the same box closes it again.
 - Hazards that each teach a different lesson: magma, gas detonation, collapses, quakes.
 - Optional OpenTrack head tracking with real positional parallax.
-- Sound with no sound files: switchgear, screen chirps, the teletype's hammer, and a
-  drill rumble synthesised from the hardness and value of the block being cut.
+- A complete synthesised sound suite with no audio files: machinery that responds to
+  load, per-fault klaxons, environmental beds that crossfade with depth, and a score
+  whose harmony is chosen by the stratum you are standing in.
 - Saves that are the world seed plus the voxels you changed, so they weigh kilobytes.
 
 ## Head tracking (OpenTrack)
@@ -190,7 +223,7 @@ collision needs no scaling anywhere.
 npm test
 ```
 
-65 unit tests covering voxel indexing and the out-of-bounds conventions, mesher face
+71 unit tests covering voxel indexing and the out-of-bounds conventions, mesher face
 counts and culling, ray traversal against oblique tunnelling, collision and fall
 impacts, the ore rarity ladder and depth bands, the upgrade price curve, subsystem
 degradation, hazard fuses and collapse support rules, sensor sampling, narrative beat

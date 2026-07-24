@@ -123,12 +123,16 @@ against the canopy frame — and never turns the pod.
   the rumble is synthesised live from the block under the bit. Hardness raises and
   tightens the filter, and an ore opens a resonant ring pitched off its value — so a
   seam announces itself in the sound of the machine before it appears on the manifest.
+- **The rock has a key.** There is a score, but no soundtrack: a tempo-free chord
+  belonging to the stratum you are in. The root walks down as you dig and the mode
+  sours, so you can tell roughly how deep you are with your eyes shut. It ducks under
+  the drill, leans in when the mine is winning, and is silent when the pod is off.
 - **No art assets.** Every texture, model, gauge face and CRT page in the game is
   generated in code at boot. That is why the whole thing fits in a single HTML file.
 
 ## Known limitations
 
 - Software rendering (a machine with no GPU) will run this, but slowly.
-- There is no music, and the sound is entirely synthesised — machinery, switchgear and
-  the teletype, not a score.
+- All sound is synthesised at boot; there are no audio files and nothing streams. The
+  score is generated from your depth rather than composed, so it has no tunes in it.
 - The claim is a fixed 64 × 64 × 256 m and the world seed is fixed per build.
