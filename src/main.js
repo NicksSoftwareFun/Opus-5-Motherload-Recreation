@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Loop } from './core/loop.js';
 import { Input } from './core/input.js';
+import { createHeadTracking } from './core/headTracking.js';
 import { createScene } from './render/scene.js';
 import { createSurface } from './render/surface.js';
 import { createBlockAtlas, createBlockMaterials } from './render/materials.js';
@@ -37,6 +38,7 @@ const seed = 1337;
 
 const view = createScene();
 const input = new Input(view.renderer.domElement);
+const tracker = createHeadTracking();
 
 const surface = createSurface(seed);
 view.scene.add(surface.group);
@@ -151,6 +153,10 @@ const actions = {
   },
   setPage: (p) => { session.page = p; },
   setManualPage: (n) => { manualPage = (n + 3) % 3; },
+  recentreTracker: () => {
+    tracker.recentre();
+    session.post(tracker.connected ? 'HEAD TRACKER RECENTRED' : 'NO TRACKER SIGNAL');
+  },
   startRun: (fresh) => session.startRun(fresh),
 
   buyFuel: (litres) => {
@@ -211,6 +217,8 @@ const FOLLOW_RATE = 5.0;
 
 const forward = new THREE.Vector3();
 const right = new THREE.Vector3();
+const lean = new THREE.Vector3();
+const UP = new THREE.Vector3(0, 1, 0);
 const aimDir = new THREE.Vector3();
 
 chunks.prime(body.position);
@@ -227,8 +235,19 @@ function update(dt, elapsed) {
   podYaw += turn;
   headYaw -= turn;
 
-  const viewYaw = podYaw + headYaw;
-  cockpit.camera.rotation.set(headPitch, headYaw, 0, 'YXZ');
+  // Head tracking rides on top of the mouse look: the tracker moves the pilot's
+  // head inside the cabin, the mouse still steers the pod. The follow detent above
+  // reads only the mouse component, so leaning never spins the pod.
+  tracker.update(dt);
+  if (input.wasPressed('F9')) tracker.recentre();
+  const trk = tracker.pose;
+  const lookYaw = headYaw + trk.yaw;
+  const lookPitch = THREE.MathUtils.clamp(headPitch + trk.pitch, -1.35, 1.35);
+
+  const viewYaw = podYaw + lookYaw;
+  cockpit.camera.rotation.set(lookPitch, lookYaw, trk.roll, 'YXZ');
+  // Positional lean gives real parallax against the canopy frame and the consoles.
+  cockpit.camera.position.set(trk.x, trk.y, -trk.z);
   cockpit.camera.updateMatrixWorld(true);
 
   // --- Crosshair interaction ---
@@ -269,9 +288,9 @@ function update(dt, elapsed) {
 
   // --- Drill ---
   aimDir.set(
-    -Math.sin(viewYaw) * Math.cos(headPitch),
-    Math.sin(headPitch),
-    -Math.cos(viewYaw) * Math.cos(headPitch),
+    -Math.sin(viewYaw) * Math.cos(lookPitch),
+    Math.sin(lookPitch),
+    -Math.cos(viewYaw) * Math.cos(lookPitch),
   );
   const wantDrill = input.primaryDown && live && drillClutch && !interaction.blockingDrill;
   const result = drill.update(dt, {
@@ -313,17 +332,21 @@ function update(dt, elapsed) {
 
   // --- Cameras and rigs ---
   shake = Math.max(0, shake - dt * 1.8);
-  view.camera.position.copy(body.position);
+  // The lean is in cabin space, so rotate it into the world before applying it.
+  lean.set(trk.x, trk.y, -trk.z).applyAxisAngle(UP, viewYaw);
+  view.camera.position.copy(body.position).add(lean);
   if (shake > 0.001) {
     view.camera.position.x += (Math.random() - 0.5) * shake * 0.06;
     view.camera.position.y += (Math.random() - 0.5) * shake * 0.06;
   }
-  view.camera.rotation.set(headPitch, viewYaw, (Math.random() - 0.5) * shake * 0.02, 'YXZ');
+  view.camera.rotation.set(
+    lookPitch, viewYaw, trk.roll + (Math.random() - 0.5) * shake * 0.02, 'YXZ',
+  );
 
   headRig.position.copy(body.position);
   headRig.rotation.set(0, podYaw, 0, 'YXZ');
   aimRig.position.copy(body.position);
-  aimRig.rotation.set(headPitch, viewYaw, 0, 'YXZ');
+  aimRig.rotation.set(lookPitch, viewYaw, 0, 'YXZ');
   for (const lamp of headlights) lamp.intensity = lightsOn && live ? 11 : 0;
   podFill.intensity = lightsOn && live ? 1.5 : 0.25;
   boomLamp.intensity = lightsOn && live ? 9 : 0;
@@ -350,6 +373,7 @@ function update(dt, elapsed) {
     pod, session, drill, depth, speed, time: elapsed,
     manualPage,
     station,
+    tracker,
     upgrades: UPGRADES,
     prices: { fuel: SERVICE.FUEL_PER_LITRE, repair: SERVICE.REPAIR_PER_POINT },
     hasSave: saveAvailable,
@@ -398,6 +422,7 @@ window.__MOTHERLOAD__ = {
   pod,
   drill,
   session,
+  tracker,
   base,
   stations: STATIONS,
   fx,

@@ -21,6 +21,32 @@ npm test         # unit tests
 npm run shots    # headless screenshot harness -> shots/
 ```
 
+## Head tracking (OpenTrack)
+
+Optional, and off unless you run the bridge. A browser cannot open a UDP socket and
+OpenTrack cannot speak WebSocket, so a small Node process sits between them:
+
+```bash
+npm run track      # binds udp://127.0.0.1:4242, serves ws://127.0.0.1:4243
+```
+
+In OpenTrack, set **Output** to *UDP over network*, remote host `127.0.0.1`, remote
+port `4242`. Start tracking, then load the game — it connects on its own and retries
+quietly in the background, so the bridge can be started or stopped at any time.
+
+The tracker only moves the pilot's head **inside the cabin**. Mouse yaw still steers
+the pod through the follow detent, and the detent reads only the mouse component, so
+leaning to see past a canopy pillar or dipping your head to read the terminal never
+sends the pod into a spin. Positional tracking is wired to real parallax against the
+canopy frame and the side consoles.
+
+- `F9`, or the button on the terminal's SYS page, recentres. The first pose received
+  also becomes centre automatically.
+- `?track=off` disables it. `?track=host:port` points at a bridge on another machine.
+- Gains, clamps and smoothing live in `DEFAULTS` in `src/core/headTracking.js`. If an
+  axis moves the wrong way, negate its gain — OpenTrack's sign conventions depend on
+  which tracker and filter chain you are using.
+
 ## Design rules
 
 Two rules drive nearly every decision in this codebase:

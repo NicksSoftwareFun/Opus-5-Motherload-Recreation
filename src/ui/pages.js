@@ -238,15 +238,31 @@ export function systemsPage(ctx, api, state) {
     y += 22;
   }
 
-  y += 6;
+  y += 4;
   api.rule(y - 12);
   api.text('SENSOR SUITE', PAD, y, { size: 12, color: P.dim });
-  y += 20;
-  if (pod.sensors.size === 0) {
-    api.text('NONE FITTED', PAD, y, { size: 13, color: P.dim });
-  } else {
-    api.text(`${pod.sensors.size} MODULE(S) ONLINE`, PAD, y, { size: 13 });
-  }
+  api.text(
+    pod.sensors.size === 0 ? 'NONE FITTED' : `${pod.sensors.size} MODULE(S) ONLINE`,
+    api.W - PAD, y,
+    { size: 13, align: 'right', bold: pod.sensors.size > 0 },
+  );
+  y += 22;
+
+  // Head tracking is a peripheral, so it is reported here like any other fitting.
+  const tracker = state.tracker;
+  const trackerState = !tracker?.available ? 'DISABLED'
+    : tracker.connected ? 'LOCKED' : 'NO SIGNAL';
+  api.text('HEAD TRACKER', PAD, y, { size: 12, color: P.dim });
+  api.text(trackerState, api.W - PAD, y, {
+    size: 13, align: 'right', bold: true,
+    color: tracker?.connected ? P.hot : P.dim,
+  });
+  y += 14;
+  api.button(PAD, y, api.W - PAD * 2, 24, 'RECENTRE HEAD TRACKER  [F9]', {
+    id: 'sys:recentre',
+    disabled: !tracker?.connected,
+    onClick: () => state.actions.recentreTracker(),
+  });
 
   tabs(api, state, 'systems');
 }
