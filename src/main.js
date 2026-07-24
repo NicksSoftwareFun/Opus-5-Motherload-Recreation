@@ -5,22 +5,29 @@ import { createScene } from './render/scene.js';
 import { createSurface } from './render/surface.js';
 import { createBlockAtlas, createBlockMaterials } from './render/materials.js';
 import { createCockpit } from './render/cockpit.js';
+import { createDashboard } from './render/dashboard.js';
+import { createInteraction } from './render/interaction.js';
+import { createFX } from './render/fx.js';
 import { VoxelWorld } from './world/voxelWorld.js';
 import { generateWorld } from './world/generator.js';
 import { ChunkManager } from './world/chunkManager.js';
 import { integrate, depthOf } from './player/physics.js';
 import { Pod } from './player/pod.js';
 import { Drill } from './player/drill.js';
-import { createFX } from './render/fx.js';
+import { Session, PHASE } from './game/session.js';
+import { credits } from './game/economy.js';
 import { AIR, BLOCKS } from './world/blocks.js';
 import { WORLD, POD, PHYSICS, DEBUG } from './config.js';
 
 /**
- * Entry point.
+ * Entry point: builds the world, the pod and the cabin, and runs the loop.
  *
- * Phase 2 flies a bare pod through a real voxel mine. The cockpit, drill and
- * instrumentation land in the phases that follow; for now the camera sits where the
- * pilot's head will be.
+ * The one idea worth reading this file for is the look model. Mouse movement turns
+ * the pilot's *head*, not the pod. Past a detent the pod follows your gaze and
+ * catches up, which means small movements let you look around the cabin — at the
+ * switch bank, at the terminal — while large ones steer. Without that split, the
+ * side consoles would be permanently welded to the same spot on screen and none of
+ * the diegetic interface would be reachable.
  */
 
 const seed = 1337;
@@ -40,19 +47,24 @@ const materials = createBlockMaterials(atlas);
 const chunks = new ChunkManager(world, atlas, materials);
 view.scene.add(chunks.group);
 
-const cockpit = createCockpit();
-cockpit.resize(window.innerWidth / window.innerHeight);
-window.addEventListener('resize', () => cockpit.resize(window.innerWidth / window.innerHeight));
+const fx = createFX();
+view.scene.add(fx.points);
 
-// Headlights ride on a rig that copies the pod's orientation, so the beam always
-// goes where the pilot is looking. Underground they are the only light there is.
+const cockpit = createCockpit();
+const interaction = createInteraction(cockpit.camera);
+const syncAspect = () => cockpit.resize(window.innerWidth / window.innerHeight);
+syncAspect();
+window.addEventListener('resize', syncAspect);
+
+// --- Lighting rigs --------------------------------------------------------
+// Headlights are bolted to the hull, so they follow the pod's heading. The boom
+// lamp follows the pilot's aim, which is what lights whatever the drill is on even
+// when you are cutting off to one side.
 const headRig = new THREE.Object3D();
 view.scene.add(headRig);
+const aimRig = new THREE.Object3D();
+view.scene.add(aimRig);
 
-// Shallow decay on purpose. A physically correct inverse square blows out the wall
-// of a 1 m shaft — which is where the pod spends nearly all of its life — while
-// still leaving a cavern ten metres off pitch black. A gentler falloff keeps both
-// legible, and the fog handles the sense of distance instead.
 const headlights = [-1, 1].map((side) => {
   const lamp = new THREE.SpotLight(0xfff0cf, 11, 40, 0.72, 0.92, 0.85);
   lamp.position.set(side * 0.28, -0.12, -0.1);
@@ -62,10 +74,18 @@ const headlights = [-1, 1].map((side) => {
   return lamp;
 });
 
-// A short-range fill so the rock immediately around the pod is never pure black —
-// the spots alone leave the walls beside you invisible in a 1 m shaft.
 const podFill = new THREE.PointLight(0xffd9b0, 1.5, 8, 1.1);
 headRig.add(podFill);
+
+const boomLamp = new THREE.SpotLight(0xffe6c0, 9, 14, 0.5, 0.8, 0.9);
+boomLamp.position.set(0, 0, 0);
+boomLamp.target.position.set(0, 0, -6);
+aimRig.add(boomLamp);
+aimRig.add(boomLamp.target);
+
+// --- Game objects ---------------------------------------------------------
+const pod = new Pod();
+const drill = new Drill(world, chunks, pod);
 
 const body = {
   position: new THREE.Vector3(WORLD.CENTER_X, 1.2, WORLD.CENTER_Z),
@@ -75,37 +95,87 @@ const body = {
   hitWall: false,
 };
 
-const pod = new Pod();
-const drill = new Drill(world, chunks, pod);
-const fx = createFX();
-view.scene.add(fx.points);
+let lightsOn = true;
+let drillClutch = true;
+let manualPage = 0;
 
-let yaw = 0;
-let pitch = -0.12;
+const session = new Session({
+  pod,
+  hasSave: () => false,
+  onStartRun: () => {
+    body.position.set(WORLD.CENTER_X, 1.0, WORLD.CENTER_Z);
+    body.velocity.set(0, 0, 0);
+    chunks.prime(body.position);
+  },
+});
+
+const actions = {
+  setPower: (on) => session.setPower(on),
+  setLights: (on) => { lightsOn = on; },
+  setDrillClutch: (on) => { drillClutch = on; },
+  jettison: () => {
+    const lost = pod.jettisonCargo();
+    session.post(lost > 0 ? `BAY PURGED — ${credits(lost)} LOST` : 'BAY ALREADY EMPTY');
+  },
+  setPage: (p) => { session.page = p; },
+  setManualPage: (n) => { manualPage = (n + 3) % 3; },
+  startRun: (fresh) => session.startRun(fresh),
+};
+
+const dashboard = createDashboard({ cockpit, pod, session, interaction, actions });
+
+// --- Look model -----------------------------------------------------------
+let podYaw = 0;
+/** Head starts turned slightly left so the standby lamp is in view on a cold start. */
+let headYaw = 0.40;
+let headPitch = -0.10;
 let shake = 0;
+
+const HEAD_YAW_LIMIT = 1.95;
+const HEAD_PITCH_LIMIT = 1.15;
+const FOLLOW_DEADZONE = 0.45;
+const FOLLOW_RATE = 5.0;
 
 const forward = new THREE.Vector3();
 const right = new THREE.Vector3();
 const aimDir = new THREE.Vector3();
-const eye = new THREE.Vector3();
 
 chunks.prime(body.position);
 
 function update(dt, elapsed) {
+  // --- Look ---
   const look = input.consumeLook();
-  yaw -= look.dx;
-  pitch = THREE.MathUtils.clamp(pitch - look.dy, -1.35, 1.35);
+  headYaw = THREE.MathUtils.clamp(headYaw - look.dx, -HEAD_YAW_LIMIT, HEAD_YAW_LIMIT);
+  headPitch = THREE.MathUtils.clamp(headPitch - look.dy, -HEAD_PITCH_LIMIT, HEAD_PITCH_LIMIT);
 
-  forward.set(-Math.sin(yaw), 0, -Math.cos(yaw));
-  right.set(Math.cos(yaw), 0, -Math.sin(yaw));
+  // Past the detent, the pod turns to bring your gaze back to centre.
+  const excess = headYaw - THREE.MathUtils.clamp(headYaw, -FOLLOW_DEADZONE, FOLLOW_DEADZONE);
+  const turn = excess * Math.min(1, dt * FOLLOW_RATE);
+  podYaw += turn;
+  headYaw -= turn;
 
-  const drive = input.axis('KeyS', 'KeyW');
-  const strafe = input.axis('KeyA', 'KeyD');
-  const lift = (input.isDown('Space') ? 1 : 0)
-    - (input.isDown('ControlLeft') || input.isDown('ShiftLeft') ? 1 : 0);
+  const viewYaw = podYaw + headYaw;
+  cockpit.camera.rotation.set(headPitch, headYaw, 0, 'YXZ');
+  cockpit.camera.updateMatrixWorld(true);
 
-  // No fuel, no thrust. Gravity still very much applies.
-  const powered = pod.fuel > 0;
+  // --- Crosshair interaction ---
+  interaction.update(dt);
+  if (input.primaryPressed) interaction.activate();
+
+  const live = session.systemsLive;
+
+  // --- Thrust ---
+  forward.set(-Math.sin(podYaw), 0, -Math.cos(podYaw));
+  right.set(Math.cos(podYaw), 0, -Math.sin(podYaw));
+
+  const drive = live ? input.axis('KeyS', 'KeyW') : 0;
+  const strafe = live ? input.axis('KeyA', 'KeyD') : 0;
+  const lift = live
+    ? (input.isDown('Space') ? 1 : 0)
+      - (input.isDown('ControlLeft') || input.isDown('ShiftLeft') ? 1 : 0)
+    : 0;
+
+  const powered = live && pod.fuel > 0;
   const thrusting = powered && (lift > 0 || drive !== 0 || strafe !== 0);
   if (powered) {
     const lateral = POD.BASE_LATERAL * pod.thrustScale;
@@ -117,25 +187,24 @@ function update(dt, elapsed) {
 
   integrate(world, body, dt, { terrainHeightAt: surface.heightAt });
 
-  // Landing damage. Below the safe speed the suspension takes it; above, the hull does.
   if (body.impactSpeed > PHYSICS.FALL_SAFE_SPEED) {
-    const excess = body.impactSpeed - PHYSICS.FALL_SAFE_SPEED;
-    pod.damage(excess * PHYSICS.FALL_DAMAGE_PER_MS);
-    shake = Math.min(1, shake + excess * 0.06);
-    fx.impactDust(body.position, excess);
+    const over = body.impactSpeed - PHYSICS.FALL_SAFE_SPEED;
+    pod.damage(over * PHYSICS.FALL_DAMAGE_PER_MS);
+    shake = Math.min(1, shake + over * 0.06);
+    fx.impactDust(body.position, over);
   }
 
-  // --- Drilling ---
-  eye.copy(body.position);
+  // --- Drill ---
   aimDir.set(
-    -Math.sin(yaw) * Math.cos(pitch),
-    Math.sin(pitch),
-    -Math.cos(yaw) * Math.cos(pitch),
+    -Math.sin(viewYaw) * Math.cos(headPitch),
+    Math.sin(headPitch),
+    -Math.cos(viewYaw) * Math.cos(headPitch),
   );
+  const wantDrill = input.primaryDown && live && drillClutch && !interaction.blockingDrill;
   const result = drill.update(dt, {
-    origin: eye,
+    origin: body.position,
     direction: aimDir,
-    wantDrill: input.primaryDown,
+    wantDrill,
     elapsed,
   });
 
@@ -144,41 +213,65 @@ function update(dt, elapsed) {
     fx.drillSpray(
       dt,
       { x: t.vx + 0.5, y: -t.vy - 0.5, z: t.vz + 0.5 },
-      { x: t.normal.x, y: t.normal.y, z: t.normal.z },
+      t.normal,
       BLOCKS[t.id].color,
     );
-    shake = Math.min(0.35, shake + dt * 0.9);
+    shake = Math.min(0.30, shake + dt * 0.8);
   }
   if (result.broke) {
     fx.blockBurst(result.broke.position, result.broke.color, result.broke.ore);
-    shake = Math.min(0.6, shake + 0.12);
+    shake = Math.min(0.6, shake + 0.10);
+    if (result.broke.ore) {
+      session.post(
+        result.broke.stowed
+          ? `${result.broke.name.toUpperCase()} STOWED — ${credits(result.broke.value)}`
+          : `BAY FULL — ${result.broke.name.toUpperCase()} LOST`,
+        2.4,
+      );
+    }
   }
 
-  pod.update(dt, { thrusting, drilling: drill.active });
-  // Particles age on the simulation clock, not the render clock, so a headless
-  // simulate() run does not accumulate six seconds of undecayed spoil.
+  if (live) pod.update(dt, { thrusting, drilling: drill.active });
   fx.update(dt);
+  session.update(dt);
 
   const depth = depthOf(body.position);
   pod.deepestDepth = Math.max(pod.deepestDepth, depth);
 
+  // --- Cameras and rigs ---
   shake = Math.max(0, shake - dt * 1.8);
   view.camera.position.copy(body.position);
   if (shake > 0.001) {
     view.camera.position.x += (Math.random() - 0.5) * shake * 0.06;
     view.camera.position.y += (Math.random() - 0.5) * shake * 0.06;
   }
-  view.camera.rotation.set(pitch, yaw, (Math.random() - 0.5) * shake * 0.02, 'YXZ');
+  view.camera.rotation.set(headPitch, viewYaw, (Math.random() - 0.5) * shake * 0.02, 'YXZ');
+
   headRig.position.copy(body.position);
-  headRig.rotation.set(pitch, yaw, 0, 'YXZ');
+  headRig.rotation.set(0, podYaw, 0, 'YXZ');
+  aimRig.position.copy(body.position);
+  aimRig.rotation.set(headPitch, viewYaw, 0, 'YXZ');
+  for (const lamp of headlights) lamp.intensity = lightsOn && live ? 11 : 0;
+  podFill.intensity = lightsOn && live ? 1.5 : 0.25;
+  boomLamp.intensity = lightsOn && live ? 9 : 0;
 
   view.setDepth(depth);
   surface.update(dt, body.position);
+
+  const speed = -body.velocity.y;
+  const uiState = {
+    pod, session, drill, depth, speed, time: elapsed,
+    manualPage,
+    hasSave: false,
+    actions,
+  };
+  dashboard.update(dt, uiState);
   cockpit.update(dt, {
     depth,
     drilling: drill.active,
     velocity: body.velocity,
-    power: 1,
+    power: session.power ? 1 : 0,
+    lightsOn: lightsOn && live,
   });
 }
 
@@ -201,27 +294,25 @@ loop.start();
 /** Debug + test surface. The screenshot harness drives the game through this. */
 window.__MOTHERLOAD__ = {
   ready: true,
-  version: '0.2.0',
+  version: '0.5.0',
   three: THREE.REVISION,
   loop,
   view,
   cockpit,
+  dashboard,
+  interaction,
   headlights,
   world,
   chunks,
   body,
   pod,
   drill,
+  session,
   fx,
   input,
   genInfo,
+  PHASE,
 
-  /**
-   * Drop the pod to a depth, carving a shaft above it so it does not clip in, and
-   * set it down resting on the shaft floor. Landing it rather than dropping it
-   * matters for the capture harness: under software rendering the pod would still
-   * be in mid-air seconds later, with nothing in drill range.
-   */
   teleport(depth) {
     const cx = Math.floor(WORLD.CENTER_X);
     const cz = Math.floor(WORLD.CENTER_Z);
@@ -240,17 +331,26 @@ window.__MOTHERLOAD__ = {
     chunks.prime(body.position);
   },
 
-  look(y, p) {
-    yaw = y;
-    pitch = p;
+  /** Aim the head. Yaw is relative to the pod; positive is to the left. */
+  look(yawValue, pitchValue, { pod: podYawValue = null } = {}) {
+    headYaw = yawValue;
+    headPitch = pitchValue;
+    if (podYawValue !== null) podYaw = podYawValue;
+  },
+
+  /** Skip the cold-start ceremony: throw the master switch and take the menu option. */
+  boot(startRun = true) {
+    dashboard.switches.power.setState(true);
+    session.setPower(true);
+    session.bootTime = 999;
+    session.update(0.001);
+    if (startRun) session.startRun(true);
   },
 
   /**
-   * Advance the simulation by N seconds without rendering.
-   *
-   * Software rendering runs at a fraction of real time, so a capture that waits on
-   * the wall clock gets a fraction of the simulation it asked for. Stepping the
-   * fixed timestep directly makes scenarios both fast and deterministic.
+   * Advance the simulation by N seconds without rendering. Software rendering runs
+   * at a fraction of real time, so capture scenarios step the fixed timestep
+   * directly rather than racing the wall clock.
    */
   simulate(seconds) {
     const steps = Math.round(seconds / loop.step);

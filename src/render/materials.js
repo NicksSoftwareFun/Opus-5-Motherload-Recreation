@@ -263,7 +263,9 @@ export function createBlockMaterials(atlas) {
     map: atlas.map,
     emissiveMap: atlas.emissiveMap,
     emissive: 0xffffff,
-    emissiveIntensity: 1.0,
+    // Below 1.0 on purpose: at full strength an ore face a metre from the canopy
+    // clips to white and loses the crystal shapes that make it identifiable.
+    emissiveIntensity: 0.55,
     vertexColors: true,
     roughness: 0.94,
     metalness: 0.02,

@@ -78,6 +78,10 @@ export function createCockpit() {
   const camera = new THREE.PerspectiveCamera(RENDER.FOV, 1, 0.008, 8);
   const root = new THREE.Group();
   scene.add(root);
+  // The camera is part of the graph so things parented to it (the drill boom, the
+  // sight) are drawn. The cabin is fixed to the pod; the camera is the pilot's head
+  // turning inside it, which is how the side consoles become reachable at all.
+  scene.add(camera);
 
   const mat = makeMaterials();
 
@@ -122,8 +126,11 @@ export function createCockpit() {
   // down rather than a full head drop.
   const dash = new THREE.Group();
   dash.name = 'dash';
-  dash.position.set(0, -0.30, -0.28);
-  dash.rotation.x = -0.90;
+  // Placed so the terminal centre sits ~35 degrees below the horizon: far enough
+  // down to be out of the way of the rock, close enough that consulting it is a
+  // glance rather than a full head drop.
+  dash.position.set(0, -0.245, -0.345);
+  dash.rotation.x = -0.80;
   root.add(dash);
   dash.add(box(1.36, 0.36, 0.05, mat.hull, { name: 'dashPanel' }));
   dash.add(box(1.40, 0.04, 0.075, mat.frame, { y: -0.19, name: 'dashLip' }));
@@ -146,7 +153,9 @@ export function createCockpit() {
   for (const side of [-1, 1]) {
     const g = new THREE.Group();
     g.position.set(side * 0.545, -0.16, -0.10);
-    g.rotation.set(0.16, side * 0.95, 0);
+    // Negated against `side`: the panel's face has to turn *inward*, toward the
+    // pilot. Rotating it the other way pointed both consoles at the hull.
+    g.rotation.set(0.16, -side * 0.95, 0);
     root.add(g);
     g.add(box(0.42, 0.44, 0.05, mat.hull, { name: 'consolePanel' }));
     g.add(box(0.46, 0.035, 0.075, mat.frame, { y: -0.235 }));
@@ -165,10 +174,11 @@ export function createCockpit() {
   // points wherever the pilot looks — the drill and the crosshair are one thing.
   const drill = new THREE.Group();
   drill.name = 'drill';
-  // Sits low enough that the housing tucks behind the sill and only the spinning
-  // bit is visible ahead of the canopy — the drill frames the view, never blocks it.
+  // Parented to the camera, not the cabin: the boom follows the pilot's gaze, so
+  // the sight and the bit are always the same thing. Sits low enough that the
+  // housing tucks behind the sill and only the bit is visible ahead of the canopy.
   drill.position.set(0, -0.29, -0.44);
-  root.add(drill);
+  camera.add(drill);
 
   // Two struts running out from the sill to a housing ahead of the canopy. A drill
   // aimed straight down the view axis is otherwise just a circle; the struts are

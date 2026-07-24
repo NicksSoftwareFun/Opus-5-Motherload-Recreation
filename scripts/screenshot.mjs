@@ -21,16 +21,89 @@ const outDir = path.join(root, 'shots');
 /** Each scenario gets the page and may drive the game before the capture. */
 const SCENARIOS = [
   {
-    name: 'surface',
-    description: 'Pod sitting on the claim plaza, looking out over the Martian surface.',
+    name: 'cold-start',
+    description: 'Cold cabin before the master switch is thrown; standby lamp pulsing.',
     async run(page) {
       await page.evaluate(() => {
         const g = window.__MOTHERLOAD__;
         g.body.position.set(32.5, 1.0, 44);
         g.body.velocity.set(0, 0, 0);
-        g.look(0.0, -0.05);
+        g.look(0.90, -0.30);
+        g.simulate(0.5);
       });
-      await page.waitForTimeout(700);
+      await page.waitForTimeout(400);
+    },
+  },
+  {
+    name: 'boot-menu',
+    description: 'Self-test complete; the main menu is a page on the pod terminal.',
+    async run(page) {
+      await page.evaluate(() => {
+        const g = window.__MOTHERLOAD__;
+        g.dashboard.switches.power.setState(true);
+        g.session.setPower(true);
+        g.look(0.0, -0.62);
+        g.simulate(4.0);
+      });
+      await page.waitForTimeout(400);
+    },
+  },
+  {
+    name: 'surface',
+    description: 'Pod on the claim plaza, systems live, looking out over Mars.',
+    async run(page) {
+      await page.evaluate(() => {
+        const g = window.__MOTHERLOAD__;
+        g.boot(true);
+        g.body.position.set(32.5, 1.0, 44);
+        g.body.velocity.set(0, 0, 0);
+        g.look(0.0, -0.05);
+        g.simulate(0.5);
+      });
+      await page.waitForTimeout(500);
+    },
+  },
+  {
+    name: 'switch-bank',
+    description: 'Looking left at the master systems panel, crosshair on a switch.',
+    async run(page) {
+      await page.evaluate(() => {
+        const g = window.__MOTHERLOAD__;
+        g.boot(true);
+        g.look(0.95, -0.30);
+        g.simulate(0.4);
+      });
+      await page.waitForTimeout(400);
+    },
+  },
+  {
+    name: 'terminal',
+    description: 'The pod status page on the centre console terminal.',
+    async run(page) {
+      await page.evaluate(() => {
+        const g = window.__MOTHERLOAD__;
+        g.boot(true);
+        g.teleport(48);
+        g.pod.cash = 18450;
+        g.pod.addOre(8, 3); g.pod.addOre(6, 4); g.pod.addOre(5, 2);
+        g.pod.heat = 34; g.pod.fuel = 61; g.pod.hull = 78;
+        g.look(0.0, -0.72);
+        g.simulate(0.6);
+      });
+      await page.waitForTimeout(500);
+    },
+  },
+  {
+    name: 'cargo-manifest',
+    description: 'Cargo manifest page, ore stowed and priced.',
+    async run(page) {
+      await page.evaluate(() => {
+        const g = window.__MOTHERLOAD__;
+        g.session.page = 'cargo';
+        g.look(0.0, -0.72);
+        g.simulate(0.4);
+      });
+      await page.waitForTimeout(400);
     },
   },
   {
@@ -39,7 +112,7 @@ const SCENARIOS = [
     async run(page) {
       await page.evaluate(() => {
         const g = window.__MOTHERLOAD__;
-        g.teleport(60);
+        g.boot(true); g.teleport(60);
         g.look(0.6, -0.25);
       });
       await page.waitForTimeout(900);
@@ -51,7 +124,7 @@ const SCENARIOS = [
     async run(page) {
       await page.evaluate(() => {
         const g = window.__MOTHERLOAD__;
-        g.teleport(90);
+        g.boot(true); g.teleport(90);
         g.look(0.35, -0.75);
         g.input.primaryDown = true;
         g.simulate(6);
@@ -79,7 +152,7 @@ const SCENARIOS = [
     async run(page) {
       await page.evaluate(() => {
         const g = window.__MOTHERLOAD__;
-        g.teleport(200);
+        g.boot(true); g.teleport(200);
         g.look(1.2, -0.1);
       });
       await page.waitForTimeout(900);
