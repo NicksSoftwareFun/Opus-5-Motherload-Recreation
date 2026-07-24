@@ -43,6 +43,8 @@ export const POD = {
   BASE_LATERAL: 9.0,
   /** Fuel burned per second at full vertical thrust, and per second idling. */
   FUEL_THRUST: 0.62,
+  /** Surface manoeuvring costs 40% of the underground rate. See Pod.update. */
+  FUEL_SURFACE_SCALE: 0.4,
   FUEL_IDLE: 0.035,
   FUEL_DRILL: 0.5,
   /** Heat model: drilling and lava add, radiator sheds. */

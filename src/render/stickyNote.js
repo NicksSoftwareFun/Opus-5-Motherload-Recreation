@@ -14,9 +14,9 @@ import { canvas2d, toTexture } from './texlib.js';
 const LINES = [
   ['W A S D', 'thrust'],
   ['SPACE', 'climb'],
-  ['SHIFT', 'descend'],
+  ['C', 'descend'],
   ['Q / E', 'turn the pod'],
-  ['CTRL', 'drill straight down'],
+  ['SHIFT', 'drill straight down'],
   ['MOUSE', 'look around'],
   ['WHEEL', 'zoom'],
   ['CLICK', 'drill, or work'],
@@ -55,31 +55,47 @@ function notePaper() {
   ctx.fillStyle = '#1e2a4a';
   ctx.textBaseline = 'middle';
 
-  ctx.font = 'bold 36px "Comic Sans MS", "Segoe Print", "Bradley Hand", cursive, sans-serif';
-  ctx.fillText('POD CONTROLS', 22, 40);
+  const HAND = '"Comic Sans MS", "Segoe Print", "Bradley Hand", cursive, sans-serif';
+
+  ctx.font = `bold 32px ${HAND}`;
+  ctx.fillText('POD CONTROLS', 22, 36);
   ctx.strokeStyle = 'rgba(30,42,74,0.5)';
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(20, 64);
-  ctx.lineTo(W - 26, 60);
+  ctx.moveTo(20, 58);
+  ctx.lineTo(W - 26, 54);
   ctx.stroke();
 
-  let y = 100;
+  // The list sizes itself to the paper rather than to a number somebody typed once.
+  //
+  // It was laid out at a fixed 34 px pitch, which fitted when there were eight
+  // controls and ran off the bottom of the note by the time there were eleven —
+  // the last two rows were printing onto the dashboard behind the glass. Deriving
+  // the pitch and the type size from the space left between the rule and the
+  // footer means the next control added shrinks the list instead of escaping it.
+  const TOP = 84;
+  const BOTTOM = H - 66;
+  const step = Math.min(32, (BOTTOM - TOP) / Math.max(1, LINES.length - 1));
+  const keySize = Math.round(step * 0.78);
+  const whatSize = Math.round(step * 0.72);
+  const column = Math.round(W * 0.40);
+
+  let y = TOP;
   for (const [key, what] of LINES) {
     // A hand-written list is never perfectly aligned.
     const jitter = (Math.random() - 0.5) * 2.2;
-    ctx.font = 'bold 29px "Comic Sans MS", "Segoe Print", "Bradley Hand", cursive, sans-serif';
+    ctx.font = `bold ${keySize}px ${HAND}`;
     ctx.fillStyle = '#16224a';
     ctx.fillText(key, 22, y + jitter);
-    ctx.font = '26px "Comic Sans MS", "Segoe Print", "Bradley Hand", cursive, sans-serif';
+    ctx.font = `${whatSize}px ${HAND}`;
     ctx.fillStyle = '#2c3a5e';
-    ctx.fillText(what, 186, y + jitter);
-    y += 34;
+    ctx.fillText(what, column, y + jitter);
+    y += step;
   }
 
-  ctx.font = 'italic 22px "Comic Sans MS", "Segoe Print", cursive, sans-serif';
+  ctx.font = `italic ${Math.round(step * 0.62)}px ${HAND}`;
   ctx.fillStyle = 'rgba(30,42,74,0.75)';
-  ctx.fillText('power switch is on the left', 22, H - 22);
+  ctx.fillText('power switch is on the left', 22, H - 26);
 
   return canvas;
 }

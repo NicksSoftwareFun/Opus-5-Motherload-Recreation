@@ -337,9 +337,9 @@ export function manualPage(ctx, api, state) {
       lines: [
         'W / A / S / D    THRUST',
         'SPACE            CLIMB',
-        'SHIFT            DESCEND',
+        'C                DESCEND',
         'Q / E            TURN THE POD',
-        'CTRL             DRILL STRAIGHT DOWN',
+        'SHIFT            DRILL STRAIGHT DOWN',
         'MOUSE            LOOK AROUND',
         'WHEEL            ZOOM',
         'LEFT BUTTON      DRILL, OR OPERATE',

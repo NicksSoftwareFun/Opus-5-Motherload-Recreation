@@ -419,9 +419,9 @@ function update(dt, elapsed) {
 
   const drive = live ? input.axis('KeyS', 'KeyW') : 0;
   const strafe = live ? input.axis('KeyA', 'KeyD') : 0;
+  // Descend moved off Shift to make room for the drill: see the drill block below.
   const lift = live
-    ? (input.isDown('Space') ? 1 : 0)
-      - (input.isDown('ShiftLeft') || input.isDown('ShiftRight') ? 1 : 0)
+    ? (input.isDown('Space') ? 1 : 0) - (input.isDown('KeyC') ? 1 : 0)
     : 0;
 
   const powered = live && pod.fuel > 0;
@@ -465,11 +465,15 @@ function update(dt, elapsed) {
   }
 
   // --- Drill ---
-  // Ctrl is a dedicated "cut straight down" — the single most common thing a mining
+  // Shift is a dedicated "cut straight down" — the single most common thing a mining
   // pod does, and it should not require holding the mouse at exactly ninety degrees
   // while you are also trying to read the depth gauge.
+  //
+  // It was Ctrl, which is a bad key to hand a browser game: the browser gets it
+  // first and spends it on its own shortcuts. Shift is free of that, so Shift took
+  // the drill and descend moved down to C.
   const drillDown = live && drillClutch
-    && (input.isDown('ControlLeft') || input.isDown('ControlRight'));
+    && (input.isDown('ShiftLeft') || input.isDown('ShiftRight'));
 
   if (drillDown) {
     aimDir.set(0, -1, 0);
@@ -517,7 +521,9 @@ function update(dt, elapsed) {
   if (result.broke) hazards.onBlockRemoved(result.broke.vx, result.broke.vy, result.broke.vz);
 
   if (live) {
-    pod.update(dt, { thrusting, drilling: drill.active });
+    // "On the surface" is being above the datum, not being docked: the whole
+    // plaza and the airspace over it bills at the cheap rate.
+    pod.update(dt, { thrusting, drilling: drill.active, surface: depth < 1 });
     shake = Math.max(shake, hazards.update(dt, { position: body.position, velocity: body.velocity }));
     for (const event of hazards.drain()) {
       switch (event.kind) {
@@ -533,8 +539,8 @@ function update(dt, elapsed) {
           );
           break;
         case 'gas-lit':
-          audio.gasVent(1);
-          session.post('POCKET BREACHED — CLEAR THE AREA', 1.4);
+          audio.gasVent(event.chained ? 0.5 : 1);
+          if (!event.chained) session.post('POCKET BREACHED — CLEAR THE AREA', 1.4);
           break;
         case 'lava':
           shake = Math.min(0.7, shake + dt * 2.2);

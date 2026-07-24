@@ -166,10 +166,15 @@ export class Pod {
    * Per-tick upkeep: idle fuel burn, heat shedding, and heat damage past the
    * threshold. Thrust and drill costs are charged by their own systems.
    */
-  update(dt, { thrusting = false, drilling = false } = {}) {
+  update(dt, { thrusting = false, drilling = false, surface = false } = {}) {
     if (this.fuel > 0) {
       let burn = POD.FUEL_IDLE;
-      if (thrusting) burn += POD.FUEL_THRUST;
+      // Getting about on the surface is cheap. Down the shaft you are holding a
+      // few tonnes of pod against gravity with the thrusters and every second of
+      // it is on the meter, but crossing the plaza between the trader and the
+      // fitting shop should not be a resource decision — it is walking to the
+      // shops, and charging full burn for it made the surface feel like a tax.
+      if (thrusting) burn += POD.FUEL_THRUST * (surface ? POD.FUEL_SURFACE_SCALE : 1);
       if (drilling) burn += POD.FUEL_DRILL;
       this.burnFuel(burn * dt);
     }

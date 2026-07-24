@@ -100,21 +100,58 @@ function strokeCrystals(ctx, tile, shapes, fill, edge, glowPass) {
   ctx.restore();
 }
 
+/**
+ * Magma: chilled crust with incandescent fissures running through it.
+ *
+ * The first version was a soft orange cloud, which is what you get from plain fbm,
+ * and next to the hard-edged rock tiles it read as a smudge rather than a
+ * substance — there was nothing in it to tell you where the surface was. Real
+ * exposed melt is almost all dark: a skin of cooled basalt broken into plates,
+ * with the heat only visible in the cracks between them.
+ *
+ * So the field is ridged rather than smooth — the network of lines where the noise
+ * crosses its midpoint — and then sharpened hard, which gives plates with thin
+ * bright seams. Nearly all of the tile is dark, the emissive map is black except
+ * along the seams, and the result sits next to rock looking like a different
+ * material instead of a differently coloured one.
+ */
 function paintLava(ctx, emCtx, tile) {
   const { x: ox, y: oy } = tileOrigin(tile);
   const img = ctx.createImageData(TILE, TILE);
   const em = emCtx.createImageData(TILE, TILE);
   for (let y = 0; y < TILE; y++) {
     for (let x = 0; x < TILE; x++) {
-      const n = fbm2(x * 0.035, y * 0.035, { octaves: 4, seed: 700 });
-      // Crust over melt: the hot channels are the low-lying parts of the field.
-      const heat = Math.pow(1 - n, 2.2);
+      // Ridged noise: peaks along the midline of the field, which reads as a
+      // network of cracks rather than a field of blobs.
+      const n = fbm2(x * 0.042, y * 0.042, { octaves: 4, seed: 700 });
+      const ridge = 1 - Math.abs(n * 2 - 1);
+      const seam = ridge ** 5;
+
+      // Coarse mottling breaks the seams up so they are not all equally hot, and
+      // gives the crust plates some texture of their own.
+      const grain = fbm2(x * 0.13, y * 0.13, { octaves: 2, seed: 733 });
+      const heat = Math.min(1, seam * (0.65 + grain * 0.85));
+
+      // Crust: dark, slightly warm basalt. Nearly all of the tile is this.
+      const crust = 22 + grain * 26;
+      // Melt ramps red -> orange -> the yellow-white of the hottest seams.
+      const hr = 190 + heat * 65;
+      const hg = 30 + heat ** 1.6 * 205;
+      const hb = 10 + heat ** 3.2 * 150;
+
       const i = (y * TILE + x) * 4;
-      const r = 40 + heat * 215;
-      const g = 12 + heat * 150;
-      const b = 8 + heat * 30;
-      img.data[i] = r; img.data[i + 1] = g; img.data[i + 2] = b; img.data[i + 3] = 255;
-      em.data[i] = r * heat; em.data[i + 1] = g * heat * 0.8; em.data[i + 2] = b * heat; em.data[i + 3] = 255;
+      img.data[i] = crust * (1 - heat) + hr * heat;
+      img.data[i + 1] = crust * 0.72 * (1 - heat) + hg * heat;
+      img.data[i + 2] = crust * 0.60 * (1 - heat) + hb * heat;
+      img.data[i + 3] = 255;
+
+      // Emissive only where it is actually molten, so the crust stays dark even
+      // with a headlight on it and the seams glow in an unlit shaft.
+      const glow = heat ** 1.5;
+      em.data[i] = hr * glow;
+      em.data[i + 1] = hg * glow;
+      em.data[i + 2] = hb * glow * 0.8;
+      em.data[i + 3] = 255;
     }
   }
   ctx.putImageData(img, ox, oy);

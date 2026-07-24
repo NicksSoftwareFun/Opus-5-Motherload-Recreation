@@ -50,9 +50,9 @@ thing you need to be told.
 | --- | --- |
 | `W` `A` `S` `D` | Thrust |
 | `Space` | Lift |
-| `Shift` | Descend |
+| `C` | Descend |
 | `Q` / `E` | Turn the pod |
-| `Ctrl` | Drill straight down, wherever you happen to be looking |
+| `Shift` | Drill straight down, wherever you happen to be looking |
 | Mouse | Move your head. Looking never steers the pod |
 | Wheel | Zoom the canopy view in and out |
 | Left click | Drill whatever the sight is on — **or** operate the switch, knob or screen region it is resting on |

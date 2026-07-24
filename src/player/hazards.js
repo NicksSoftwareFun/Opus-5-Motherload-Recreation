@@ -16,6 +16,16 @@ import { PHYSICS, POD } from '../config.js';
 
 const GAS_FUSE = 1.1;
 const GAS_RADIUS = 2.4;
+/**
+ * How long a neighbouring pocket waits before it goes up too.
+ *
+ * Short enough to read as one event, long enough to hear and see as a sequence —
+ * a run of pockets going off down a seam should sound like a string of charges,
+ * not like one loud noise.
+ */
+const CHAIN_FUSE = 0.32;
+/** How far past the blast to look for the next pocket in the chain. */
+const CHAIN_REACH = 2;
 const COLLAPSE_CHECK = 6;
 
 export class Hazards {
@@ -94,13 +104,43 @@ export class Hazards {
         for (let dx = -r; dx <= r; dx++) {
           if (dx * dx + dy * dy + dz * dz > GAS_RADIUS * GAS_RADIUS) continue;
           const id = this.world.get(fuse.vx + dx, fuse.vy + dy, fuse.vz + dz);
-          if (id === AIR || !BLOCKS[id].mineable) continue;
+          if (id === AIR) continue;
+          // Gas is not mineable — you cannot drill it — but a detonation still
+          // consumes it. Without this the blast left every pocket it engulfed
+          // sitting there as gas, unbreakable and permanently in the way, which
+          // is precisely what a pilot who had just blown one up did not expect.
+          if (id !== GAS && !BLOCKS[id].mineable) continue;
           this.chunks.setBlock(fuse.vx + dx, fuse.vy + dy, fuse.vz + dz, AIR);
         }
       }
     }
-    // Clear any other pockets caught in the blast rather than chain-detonating.
-    this.fuses = this.fuses.filter((f) => f === fuse || dist(cellCentre(f.vx, f.vy, f.vz), centre) > GAS_RADIUS);
+
+    // --- Chain ---------------------------------------------------------------
+    // Everything still holding gas around the crater goes up in turn. Pockets
+    // form in connected seams, so one going off should take the seam with it
+    // rather than leaving a rind of gas cells the drill can never touch.
+    const reach = r + CHAIN_REACH;
+    for (let dy = -reach; dy <= reach; dy++) {
+      for (let dz = -reach; dz <= reach; dz++) {
+        for (let dx = -reach; dx <= reach; dx++) {
+          const nx = fuse.vx + dx;
+          const ny = fuse.vy + dy;
+          const nz = fuse.vz + dz;
+          if (this.world.get(nx, ny, nz) !== GAS) continue;
+          const existing = this.fuses.find((f) => f.vx === nx && f.vy === ny && f.vz === nz);
+          if (existing) {
+            // Already lit: bring it forward rather than letting it burn its own
+            // full fuse, so the chain stays a chain.
+            existing.t = Math.min(existing.t, CHAIN_FUSE);
+            continue;
+          }
+          this.fuses.push({ vx: nx, vy: ny, vz: nz, t: CHAIN_FUSE });
+          // Flagged, so the cabin can hiss for each one without printing
+          // "POCKET BREACHED" forty times down a long seam.
+          this._emit('gas-lit', { position: cellCentre(nx, ny, nz), chained: true });
+        }
+      }
+    }
 
     const d = dist(centre, podPosition);
     const falloff = Math.max(0, 1 - d / (GAS_RADIUS + 4));

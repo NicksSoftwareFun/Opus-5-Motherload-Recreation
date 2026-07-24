@@ -284,7 +284,11 @@ export function rotarySelector({
     new THREE.CircleGeometry(size * 1.15, 28),
     new THREE.MeshStandardMaterial({ map: toTexture(legendCanvas), roughness: 0.9 }),
   );
-  legendRing.position.z = -0.001;
+  // Proud of the console, not flush with it. The knob is mounted at PANEL_Z, which
+  // is one millimetre off the panel face, so a ring at local -0.001 landed exactly
+  // *on* that face — two coplanar surfaces, and the depth buffer picking a winner
+  // per pixel. The position legends crawled with dither.
+  legendRing.position.z = 0.003;
   ring.add(legendRing);
 
   const knobLegend = legendPlate(label, size * 1.9, size * 0.5);

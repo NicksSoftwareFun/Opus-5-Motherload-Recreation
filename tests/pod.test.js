@@ -262,6 +262,58 @@ describe('hazards', () => {
     expect(world.get(20, 20, 20)).toBe(AIR);
   });
 
+  it('takes the whole seam with it: one pocket chains to its neighbours', () => {
+    const world = new VoxelWorld();
+    world.data.fill(ROCK);
+    world.recountChunks();
+    const pod = new Pod();
+    const chunks = stubChunks(world);
+    const hz = new Hazards(world, chunks, pod, pod.subsystems);
+
+    // A seam of pockets running away from the one the drill opens, each spaced
+    // far enough apart that only a chain — not a single blast radius — reaches
+    // the far end of it.
+    const seam = [];
+    for (let i = 0; i < 6; i++) seam.push([20 + i * 4, 20, 20]);
+    for (const [x, y, z] of seam) world.set(x, y, z, GAS);
+
+    chunks.setBlock(19, 20, 20, AIR);
+    hz.onBlockRemoved(19, 20, 20);
+    hz.drain();
+
+    // Well away from the seam: this is about the rock, not about the damage.
+    const far = vec(20.5, -20.5, 60.5);
+    for (let i = 0; i < 900; i++) hz.update(1 / 60, { position: far, velocity: vec(0, 0, 0) });
+
+    // Every pocket is gone. Gas is not mineable, so any left behind would be a
+    // permanent obstruction the drill could never clear.
+    for (const [x, y, z] of seam) {
+      expect(world.get(x, y, z)).not.toBe(GAS);
+    }
+    expect(hz.fuses.length).toBe(0);
+  });
+
+  it('does not chain to pockets that are nowhere near the blast', () => {
+    const world = new VoxelWorld();
+    world.data.fill(ROCK);
+    world.recountChunks();
+    const pod = new Pod();
+    const chunks = stubChunks(world);
+    const hz = new Hazards(world, chunks, pod, pod.subsystems);
+
+    world.set(20, 20, 20, GAS);
+    world.set(40, 20, 20, GAS);      // a separate pocket, twenty metres off
+    chunks.setBlock(19, 20, 20, AIR);
+    hz.onBlockRemoved(19, 20, 20);
+    hz.drain();
+
+    const far = vec(20.5, -20.5, 60.5);
+    for (let i = 0; i < 600; i++) hz.update(1 / 60, { position: far, velocity: vec(0, 0, 0) });
+
+    expect(world.get(20, 20, 20)).toBe(AIR);
+    expect(world.get(40, 20, 20)).toBe(GAS);
+  });
+
   it('drops unsupported rock but leaves braced rock alone', () => {
     const world = new VoxelWorld();
     world.data.fill(AIR);

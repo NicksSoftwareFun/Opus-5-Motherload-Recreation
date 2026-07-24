@@ -32,7 +32,7 @@ npm run dev            # http://127.0.0.1:5173
 npm run build          # static bundle in dist/
 npm run build:single   # one self-contained file in release/
 npm run preview        # serve the built bundle
-npm test               # 71 unit tests
+npm test               # 73 unit tests
 npm run shots          # headless screenshot harness -> shots/
 npm run audio          # measure the synthesised mix in a headless browser
 npm run switches       # click every cockpit switch and check it stays thrown
@@ -51,9 +51,9 @@ menu will appear on that screen. Everything after that happens in the cockpit.
 | --- | --- |
 | `W` `A` `S` `D` | Thrust |
 | `Space` | Lift |
-| `Shift` | Descend |
+| `C` | Descend |
 | `Q` / `E` | Turn the pod |
-| `Ctrl` | Drill straight down, regardless of where you are looking |
+| `Shift` | Drill straight down, regardless of where you are looking |
 | Mouse | Move your head. Looking never steers the pod |
 | Wheel | Zoom the canopy view in and out |
 | Left click | Drill what the sight is on — **or** operate the switch, knob or screen region it is resting on |
@@ -82,7 +82,7 @@ anywhere in the project.
 | --- | --- |
 | ![A cold, dark cockpit with the standby lamp pulsing](docs/screenshots/cold-start.png) **Cold start.** The game opens with the pod switched off. A pulsing standby lamp throws amber light across the switch panel — the entire tutorial for how to begin. | ![The self-test menu on the pod terminal](docs/screenshots/boot-menu.png) **The main menu is a boot screen.** Throw master power, the terminal POSTs, and NEW EXCAVATION is a button on that CRT. Note the last line of the self-test. |
 | ![The left-hand switch bank](docs/screenshots/switch-bank.png) **The switch bank.** Master power, exterior lamps, drill clutch, cargo release and the map projector. You look at them and click them; the headlights are not a keybind. | ![The surface base seen through the canopy](docs/screenshots/base.png) **The claim.** Six installations ring the shaft mouth, each with a pad, a lit sign and a silhouette you can navigate by. |
-| ![Drilling downward with spoil flying from the bit](docs/screenshots/drilling.png) **Cutting.** The drill points where you look — or straight down on `Ctrl` — and the sight is the boom's own optics. Ore is the only thing that glows down here. | ![The upgrade console at the fitting shop](docs/screenshots/workshop.png) **Docking is proximity.** Land on a pad and your own terminal becomes that vendor's console. No shop overlay, nothing to dismiss. |
+| ![Drilling downward with spoil flying from the bit](docs/screenshots/drilling.png) **Cutting.** The drill points where you look — or straight down on `Shift` — and the sight is the boom's own optics. Ore is the only thing that glows down here. | ![The upgrade console at the fitting shop](docs/screenshots/workshop.png) **Docking is proximity.** Land on a pad and your own terminal becomes that vendor's console. No shop overlay, nothing to dismiss. |
 | ![The chase camera feed on the right console](docs/screenshots/chase-feed.png) **Hull optics.** Three cameras, one CRT, one rotary knob. It is the only way to ever see the machine you are flying. | ![The volumetric mine map projected above the dash](docs/screenshots/hologram.png) **The mine map.** A projector on the dash throws up the claim with every metre you have cut, your pod inside it, and a tether to the surface. |
 | ![The chirp sonar scope and strata profiler](docs/screenshots/sensor-suite.png) **The sensor racks.** They start empty. Each module the bureau sells bolts into a named bay, so you can see the holes in your own cockpit. | ![Ore and magma visible through solid rock](docs/screenshots/providence.png) **The Providence Engine.** 666,000 credits, sold without a specification. It shows you every seam within forty metres straight through the rock, and it bills you by the second. |
 | ![The dot-matrix teletype printing a transmission](docs/screenshots/teletype.png) **Mr. Natas arrives as paper.** Transmissions clatter out of the printer beside the seat while you keep flying. Nothing stops the machine. | ![The seal at the bottom of the claim, opening](docs/screenshots/the-seal.png) **The bottom.** A chamber nobody excavated, and a door nobody built. |
@@ -108,7 +108,7 @@ dot-matrix teletype.
 The one mechanic that makes it all reachable is the **look model**. The mouse moves
 the pilot's head and nothing else — you can read a gauge on the far side of the cabin
 without the pod drifting a degree. The pod turns on `Q` and `E`, like a machine with a
-yaw thruster rather than a first-person shooter with a rifle. `Ctrl` overrides the aim
+yaw thruster rather than a first-person shooter with a rifle. `Shift` overrides the aim
 entirely and sinks the bit straight down, so the ordinary business of digging a shaft
 does not require you to hold the sight steady on the floor.
 
@@ -223,7 +223,7 @@ collision needs no scaling anywhere.
 npm test
 ```
 
-71 unit tests covering voxel indexing and the out-of-bounds conventions, mesher face
+73 unit tests covering voxel indexing and the out-of-bounds conventions, mesher face
 counts and culling, ray traversal against oblique tunnelling, collision and fall
 impacts, the ore rarity ladder and depth bands, the upgrade price curve, subsystem
 degradation, hazard fuses and collapse support rules, sensor sampling, narrative beat
