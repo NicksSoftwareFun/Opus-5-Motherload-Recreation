@@ -16,31 +16,6 @@ screenshots below.
 [nickssoftwarefun.github.io/Opus-5-Motherload-Recreation](https://nickssoftwarefun.github.io/Opus-5-Motherload-Recreation/)
 — rebuilt and redeployed by GitHub Actions on every push to the default branch.
 
-**The easy way.** Download `motherload-3d.html` from the
-[latest release](../../releases/latest) and double-click it. One file, no install, no
-server, no internet. It works because the game has no assets to fetch — everything is
-drawn at boot.
-
-**From source:**
-
-```bash
-npm install
-npm run dev            # http://127.0.0.1:5173
-```
-
-```bash
-npm run build          # static bundle in dist/
-npm run build:single   # one self-contained file in release/
-npm run preview        # serve the built bundle
-npm test               # 73 unit tests
-npm run shots          # headless screenshot harness -> shots/
-npm run audio          # measure the synthesised mix in a headless browser
-npm run switches       # click every cockpit switch and check it stays thrown
-npm run render         # render a scripted descent to a shareable audio file
-npm run track          # OpenTrack head-tracking bridge (optional)
-```
-
-Chrome, Edge and Firefox are all fine. You need WebGL2 and a mouse.
 
 ## How to play
 
