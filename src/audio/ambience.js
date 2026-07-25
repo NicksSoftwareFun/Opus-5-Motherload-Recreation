@@ -17,17 +17,49 @@ import { noiseVoice, burst, tone, lfo, glide } from './synth.js';
  */
 export function createAmbience(ctx, { bus, noise, reverb }) {
   // --- Mars wind -----------------------------------------------------------
-  // Thin and high. Mars has about a percent of Earth's air pressure: a gale there
-  // would barely move a flag, and it should sound like a draught, not a storm.
-  const wind = noiseVoice(ctx, noise, { type: 'bandpass', freq: 780, Q: 0.8, gain: 0 });
-  wind.out.connect(bus);
-  lfo(ctx, wind.filter.frequency, { rate: 0.07, depth: 260 });
-  const windGust = ctx.createGain();          // second, slower gust layer
-  windGust.gain.value = 0;
-  const gustVoice = noiseVoice(ctx, noise, { type: 'lowpass', freq: 340, Q: 0.5, gain: 1 });
-  gustVoice.out.connect(windGust);
-  windGust.connect(bus);
-  lfo(ctx, windGust.gain, { rate: 0.043, depth: 0.014 });
+  // Wind whistles because something is in the way of it. The pod is a box with
+  // struts, a drill boom and an aerial on it, and each of those has a note it sings
+  // when the air goes past — so this is three narrow resonances rather than one
+  // wide one. A broad filter over noise is just noise with the treble rolled off:
+  // it reads as static, because nothing in it has a pitch to hear.
+  //
+  // Each voice wanders in pitch and swells in level on its own slow cycle, and the
+  // cycles are deliberately incommensurate — 0.083, 0.052 and 0.037 Hz, none a
+  // multiple of another — so the three never line up twice and the wind never
+  // repeats a phrase. On top of that the weather itself drifts; see update().
+  const windOut = ctx.createGain();
+  windOut.gain.value = 0;
+  windOut.connect(bus);
+
+  const VOICES = [
+    // freq   Q    wander  drift   gust   level  pan
+    [1550, 13.0, 430, 0.083, 0.041, 3.4, -0.55],   // the whistle round a strut
+    [620, 8.0, 190, 0.052, 0.029, 2.8, 0.45],   // the howl through the frame
+    [245, 5.0, 80, 0.037, 0.023, 2.2, -0.15],   // a low moan under both
+  ];
+  const canPan = typeof ctx.createStereoPanner === 'function';
+  const windVoices = VOICES.map(([freq, Q, wander, drift, gust, level, pan]) => {
+    const v = noiseVoice(ctx, noise, { type: 'bandpass', freq, Q, gain: level });
+    // Both of these are *added* to the parameter's own value, so update() can move
+    // the base pitch and level underneath while these keep breathing on top.
+    lfo(ctx, v.filter.frequency, { rate: drift, depth: wander });
+    lfo(ctx, v.out.gain, { rate: gust, depth: level * 0.7 });
+    if (canPan) {
+      const p = ctx.createStereoPanner();
+      p.pan.value = pan;
+      v.out.connect(p);
+      p.connect(windOut);
+    } else {
+      v.out.connect(windOut);
+    }
+    return { ...v, base: freq, level };
+  });
+
+  // A thin bed of moving air beneath the resonances, so it is a wind and not an
+  // organ. Quiet on purpose: it is the thing you would miss rather than hear.
+  const windAir = noiseVoice(ctx, noise, { type: 'highpass', freq: 620, Q: 0.4, gain: 0.16 });
+  windAir.out.connect(windOut);
+  lfo(ctx, windAir.filter.frequency, { rate: 0.019, depth: 220 });
 
   // --- Cavern --------------------------------------------------------------
   // Not a sound so much as a pressure: everything above about 120 Hz removed, so
@@ -86,6 +118,20 @@ export function createAmbience(ctx, { bus, noise, reverb }) {
   let creakIn = 6;
   let crackleIn = 0.4;
   let windLevel = 0;
+  /**
+   * The weather.
+   *
+   * The per-voice LFOs give the wind a breath; this gives it a mood. Every twenty
+   * seconds or so it picks a new pitch centre and a new strength and takes its
+   * time getting there, so a minute of standing on the pad is never the same
+   * minute twice — it lulls, it gets up, it drops a semitone and sits there.
+   * Without it three sine LFOs eventually reveal themselves as three sine LFOs.
+   */
+  let weatherIn = 0;
+  let windPitch = 1;
+  let windPitchTo = 1;
+  let windForce = 0.7;
+  let windForceTo = 0.7;
   let cavernLevel = 0;
   let magmaLevel = 0;
   let cabinLevel = 0;
@@ -108,10 +154,26 @@ export function createAmbience(ctx, { bus, noise, reverb }) {
       const inside = Math.min(1, Math.max(0, depth / 20));
       const outside = 1 - inside;
 
-      windLevel += (outside * (0.05 + Math.min(0.05, speed * 0.004)) - windLevel)
+      // Weather drift. New target every 16-34 seconds, crawled toward at a rate
+      // slow enough that you never catch it changing.
+      weatherIn -= dt;
+      if (weatherIn <= 0) {
+        weatherIn = 16 + Math.random() * 18;
+        windPitchTo = 0.72 + Math.random() * 0.62;    // most of an octave either way
+        windForceTo = 0.35 + Math.random() * 0.85;
+      }
+      windPitch += (windPitchTo - windPitch) * Math.min(1, dt * 0.09);
+      windForce += (windForceTo - windForce) * Math.min(1, dt * 0.07);
+
+      // Moving through the air raises the pitch as well as the level, which is the
+      // difference between wind blowing past you and you flying through it.
+      const rush = Math.min(1, speed * 0.05);
+      for (const v of windVoices) {
+        glide(v.filter.frequency, v.base * windPitch * (1 + rush * 0.22), now, 1.2);
+      }
+      windLevel += (outside * (0.062 + Math.min(0.05, speed * 0.004)) * windForce - windLevel)
         * Math.min(1, dt * 1.2);
-      glide(wind.out.gain, windLevel, now, 0.3);
-      glide(gustVoice.out.gain, outside, now, 0.5);
+      glide(windOut.gain, windLevel, now, 0.3);
 
       // Depth thickens the rock bed, but with a ceiling: past a hundred metres it
       // is already as heavy as it is going to get and the score takes over.

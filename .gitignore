@@ -5,4 +5,4 @@ shots/
 .DS_Store
 
 # The rendered WAV is 15 MB; the Opus copy beside it is the one worth keeping.
-release/audio/*.wav
+docs/audio/*.wav

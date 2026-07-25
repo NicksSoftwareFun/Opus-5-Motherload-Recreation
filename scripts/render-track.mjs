@@ -14,15 +14,18 @@
  *
  *   node scripts/render-track.mjs
  *
- * Output: release/audio/motherload-descent.wav  (universal)
- *         release/audio/motherload-descent.webm (Opus, ~15x smaller)
+ * Output: docs/audio/motherload-descent.wav  (universal)
+ *         docs/audio/motherload-descent.webm (Opus, ~15x smaller)
  */
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 
 const DURATION = 86;
-const OUT_DIR = 'release/audio';
+// Deliberately not under release/: the single-file build sets emptyOutDir on that
+// directory, so anything parked there is deleted the next time somebody runs
+// `npm run build:single`. It took exactly one build to find that out.
+const OUT_DIR = 'docs/audio';
 
 const server = await createServer({
   root: process.cwd(),
