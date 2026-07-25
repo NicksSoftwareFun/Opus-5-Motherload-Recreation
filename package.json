@@ -13,7 +13,8 @@
     "track": "node tools/opentrack-bridge.mjs",
     "build:single": "vite build --config vite.config.single.js",
     "audio": "node scripts/audio-check.mjs",
-    "switches": "node scripts/switch-check.mjs"
+    "switches": "node scripts/switch-check.mjs",
+    "render": "node scripts/render-track.mjs"
   },
   "dependencies": {
     "three": "^0.185.1"

@@ -36,6 +36,7 @@ npm test               # 73 unit tests
 npm run shots          # headless screenshot harness -> shots/
 npm run audio          # measure the synthesised mix in a headless browser
 npm run switches       # click every cockpit switch and check it stays thrown
+npm run render         # render a scripted descent to a shareable audio file
 npm run track          # OpenTrack head-tracking bridge (optional)
 ```
 
@@ -146,7 +147,9 @@ closes, and by the bottom of the claim the harmony is a minor second against a
 tritone. It ducks under the drill, leans in when the mine is winning, and is silent
 when the pod is switched off. You can tell roughly how deep you are with your eyes
 shut. `npm run audio` measures all of it in a headless browser, because a synthesised
-mix fails silently.
+mix fails silently, and `npm run render` drives the same audio module through a
+scripted descent and writes the result to a file — a way to hear the whole arc
+without playing, and the only way to share it.
 
 ## What is in it
 
