@@ -12,6 +12,7 @@
     "shots": "node scripts/screenshot.mjs",
     "track": "node tools/opentrack-bridge.mjs",
     "build:single": "vite build --config vite.config.single.js",
+    "build:jukebox": "vite build --config vite.config.jukebox.js",
     "audio": "node scripts/audio-check.mjs",
     "switches": "node scripts/switch-check.mjs",
     "render": "node scripts/render-track.mjs",

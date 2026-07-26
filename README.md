@@ -38,9 +38,16 @@ npm run audio          # measure the synthesised mix in a headless browser
 npm run switches       # click every cockpit switch and check it stays thrown
 npm run render         # render a scripted descent to a shareable audio file
 npm run track          # OpenTrack head-tracking bridge (optional)
+npm run jukebox        # the sound bench (see below)
+npm run build:jukebox  # the sound bench as one self-contained file
 ```
 
 Chrome, Edge and Firefox are all fine. You need WebGL2 and a mouse.
+
+**Node 20.19+ or 22.12+** for anything that runs Vite. On an older Node every `npm`
+script here dies with `'node:util' does not provide an export named 'styleText'`,
+which is Vite's dependency failing, not this project. The two single-file builds in
+`release/` need no Node at all, which is the point of them.
 
 ## How to play
 
@@ -154,8 +161,12 @@ without playing, and the only way to share it.
 ## The Jukebox
 
 ```bash
-npm run jukebox
+npm run jukebox        # dev server
 ```
+
+Or open `release/motherload-jukebox.html` — the same tool as one self-contained file,
+built by `npm run build:jukebox`, which double-clicks open with no install. It is 46 kB
+because there is nothing in it but code: every sound is synthesised on the spot.
 
 A bench for the audio, at `tools/jukebox/`. It is a tool, not part of the game — it
 imports the game's own `src/audio` modules and ships nothing back into them, so there
@@ -178,8 +189,13 @@ the game sounds wrong.
   that drops into `src/audio/audio.js` unchanged.
 
 A log-frequency spectrum and a waveform run across the top, tapped off the master bus.
-`npm run jukebox-check` drives the whole thing in headless Chromium and asserts the
-pads fire, the machinery makes level, and the scopes actually paint.
+Nothing sounds until you click **ARM AUDIO** — a browser will not start an AudioContext
+without a gesture, and the whole tool is one AudioContext.
+
+`npm run jukebox-check` drives it in headless Chromium and asserts the pads fire, the
+machinery makes level, and the scopes actually paint. It runs twice: once against the
+source and once against the built single file over `file://`, because the single-file
+transform re-emits everything as one inlined script and has broken silently before.
 
 ## What is in it
 
