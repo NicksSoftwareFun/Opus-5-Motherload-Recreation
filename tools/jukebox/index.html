@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Motherload Jukebox — sound bench</title>
+    <link rel="stylesheet" href="./jukebox.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <h1>MOTHERLOAD <span>JUKEBOX</span></h1>
+      <p class="sub">
+        A bench for the game's synthesised audio. Every sound here is produced by the
+        same <code>src/audio</code> modules the cockpit runs — nothing is a recording,
+        and nothing is a re-creation.
+      </p>
+      <div class="bar-controls">
+        <button id="arm" class="arm">CLICK TO ARM AUDIO</button>
+        <label class="vol">MASTER
+          <input id="master" type="range" min="0" max="100" value="70" />
+          <output id="masterOut">70</output>
+        </label>
+      </div>
+    </header>
+
+    <main>
+      <!-- ---------------------------------------------------------------- -->
+      <section class="panel scopes">
+        <h2>Scope</h2>
+        <div class="scope-wrap">
+          <canvas id="spectrum" width="900" height="180"></canvas>
+          <canvas id="wave" width="900" height="90"></canvas>
+        </div>
+        <p class="hint">
+          Spectrum (log frequency) and waveform, tapped off the master bus. Fire a pad
+          and watch where it lives.
+        </p>
+      </section>
+
+      <!-- ---------------------------------------------------------------- -->
+      <section class="panel wide">
+        <h2>Sound board</h2>
+        <p class="hint">
+          Every one-shot in the game. Hold <kbd>Shift</kbd> while clicking to fire a
+          pad ten times in a row, which is how you hear whether something is too
+          repetitive to survive being heard a hundred times a run.
+        </p>
+        <div id="pads"></div>
+      </section>
+
+      <!-- ---------------------------------------------------------------- -->
+      <div class="pair">
+      <section class="panel">
+        <h2>Machinery — the voices that run</h2>
+        <p class="hint">
+          These are not triggered, they are <em>driven</em>. The drill's timbre comes
+          from the block under the bit: hardness raises and tightens the band it grinds
+          in, and an ore opens a narrow resonant peak pitched off its value.
+        </p>
+        <div id="machinery" class="rows"></div>
+      </section>
+
+      <!-- ---------------------------------------------------------------- -->
+      <section class="panel">
+        <h2>The environment</h2>
+        <p class="hint">
+          The beds and the score, driven exactly as <code>main.js</code> drives them.
+          Drag <strong>depth</strong> and listen to the descent.
+        </p>
+        <div id="world" class="rows"></div>
+      </section>
+      </div>
+
+      <!-- ---------------------------------------------------------------- -->
+      <section class="panel wide">
+        <h2>Why it turns sinister</h2>
+        <p class="hint">
+          The score is a chord chosen by the rock you are inside. As you go down the
+          root walks down, the mode sours and the filter closes. The bar on the right
+          is <em>sensory roughness</em> — a Plomp–Levelt estimate over the first six
+          partials of every chord tone. It is not a mood setting anybody typed in; it
+          is what those intervals actually do to an ear, and it climbs the whole way.
+        </p>
+        <div id="strata" class="strata"></div>
+      </section>
+
+      <!-- ---------------------------------------------------------------- -->
+      <section class="panel wide">
+        <h2>Design a cockpit sound</h2>
+        <p class="hint">
+          Layers of the same two primitives everything in the game is built from:
+          <code>tone()</code> (an oscillator with an envelope) and <code>burst()</code>
+          (filtered noise with an envelope). Build something, audition it, then take
+          the code — it drops into <code>src/audio/audio.js</code> as-is.
+        </p>
+        <div class="designer">
+          <div id="layers"></div>
+          <div class="designer-side">
+            <div class="designer-actions">
+              <button id="addTone">+ tone layer</button>
+              <button id="addBurst">+ burst layer</button>
+              <button id="audition" class="primary">AUDITION</button>
+            </div>
+            <label class="preset">START FROM
+              <select id="preset"></select>
+            </label>
+            <pre id="code" class="code"></pre>
+            <button id="copy">copy code</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        A tool, not part of the game — it imports the game's audio modules but ships
+        nothing back into it. <code>npm run jukebox</code>
+      </p>
+    </footer>
+
+    <script type="module" src="./jukebox.js"></script>
+  </body>
+</html>

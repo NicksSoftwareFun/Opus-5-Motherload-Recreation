@@ -42,6 +42,8 @@ export function createAudio() {
   let ctx = null;
   let enabled = true;
   let started = false;
+  /** Master trim, 0..1. The mixer below is balanced against this sitting at 0.7. */
+  let volume = 0.7;
 
   let master = null;
   let ui = null;
@@ -84,7 +86,7 @@ export function createAudio() {
 
     // --- Mixer ---------------------------------------------------------------
     master = ctx.createGain();
-    master.gain.value = 0.7;
+    master.gain.value = enabled ? volume : 0.0001;
 
     // Glue, and a ceiling. Without this a detonation on top of a thruster burn on
     // top of the score is comfortably past full scale.
@@ -283,6 +285,16 @@ export function createAudio() {
     get enabled() { return enabled; },
     get movement() { return music?.movement ?? null; },
 
+    /**
+     * The context and the meter, for tooling.
+     *
+     * The Jukebox (tools/jukebox) needs somewhere to hang a scope and somewhere to
+     * build audition voices that share this mixer. Read-only handles to what is
+     * already there — nothing here changes what the game does.
+     */
+    get context() { return ctx; },
+    get analyser() { return probe; },
+
     /** RMS across the master bus, 0..1. A test hook: see the note in build(). */
     level() {
       if (!probe) return 0;
@@ -294,8 +306,19 @@ export function createAudio() {
 
     setEnabled(on) {
       enabled = on;
-      if (master) master.gain.setTargetAtTime(on ? 0.7 : 0.0001, ctx.currentTime, 0.05);
+      if (master) master.gain.setTargetAtTime(on ? volume : 0.0001, ctx.currentTime, 0.05);
     },
+
+    /**
+     * Master trim, 0..1. Muted stays muted — the trim is remembered and takes
+     * effect the next time the mixer is switched on.
+     */
+    setVolume(v) {
+      volume = Math.max(0, Math.min(1, v));
+      if (master && enabled) master.gain.setTargetAtTime(volume, ctx.currentTime, 0.03);
+    },
+
+    get volume() { return volume; },
 
     // --- Cabin ---------------------------------------------------------------
     /** A switch being thrown: a mechanical clack, not a beep. */

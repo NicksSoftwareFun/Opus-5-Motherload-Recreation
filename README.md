@@ -151,6 +151,36 @@ mix fails silently, and `npm run render` drives the same audio module through a
 scripted descent and writes the result to a file — a way to hear the whole arc
 without playing, and the only way to share it.
 
+## The Jukebox
+
+```bash
+npm run jukebox
+```
+
+A bench for the audio, at `tools/jukebox/`. It is a tool, not part of the game — it
+imports the game's own `src/audio` modules and ships nothing back into them, so there
+is no second copy of the synthesis to drift out of sync. If a pad there sounds wrong,
+the game sounds wrong.
+
+- **Sound board.** Every one-shot in the game as a pad, each with the design note for
+  why it is shaped the way it is. <kbd>Shift</kbd>-click fires one ten times in a row,
+  which is how you find out whether a sound survives being heard a hundred times a run.
+- **Machinery.** The continuous voices, driven by hand: pick the block under the bit
+  and hear the drill retune to it, ride the thrusters, hold a klaxon on.
+- **The environment.** The beds and the score, driven exactly as `main.js` drives them.
+  Drag the depth slider — or press the descend button and ride 0 → 256 m over a minute.
+- **Why it turns sinister.** The six strata with their chord, their filter cutoff, and a
+  *sensory roughness* figure computed from the actual intervals with Plomp–Levelt over
+  the first six partials of every chord tone. The mood is not a setting anybody typed
+  in; the number climbs from 0.52 at the surface to 1.96 at the bottom because those
+  intervals do that to an ear.
+- **A designer.** Stack `tone()` and `burst()` layers, audition them, and copy out code
+  that drops into `src/audio/audio.js` unchanged.
+
+A log-frequency spectrum and a waveform run across the top, tapped off the master bus.
+`npm run jukebox-check` drives the whole thing in headless Chromium and asserts the
+pads fire, the machinery makes level, and the scopes actually paint.
+
 ## What is in it
 
 - A 64 × 64 × 256 m voxel claim with ten ores on overlapping depth bands, natural
@@ -212,8 +242,8 @@ to real parallax against the canopy frame and the side consoles.
 | `src/ui/` | Diegetic CRT screens and the pages drawn onto them |
 | `src/game/` | Economy, stations, sensors, narrative, saves, session state |
 | `tests/` | Unit tests for everything that does not need a GPU |
-| `tools/` | OpenTrack bridge |
-| `scripts/` | Headless capture harness |
+| `tools/` | OpenTrack bridge, and the Jukebox sound bench |
+| `scripts/` | Headless capture and audio harnesses |
 
 Coordinates: world space is metres, Y-up, and **Y = 0 is the Martian surface**. The
 mine occupies a 64 × 64 m claim extending 256 m straight down, so a voxel's depth in
